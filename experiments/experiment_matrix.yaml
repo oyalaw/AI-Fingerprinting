@@ -110,3 +110,17 @@ experiments:
     dataset: CIFAR10
     transport: TCP
     device: iphone
+
+  # Implemented and verified end-to-end (trace -> optimize_for_mobile ->
+  # save .ptl -> load -> run, all via `torch` -- no extra dependency);
+  # real on-device execution needs a native Android/iOS app, out of scope
+  # -- device here is the intended target, not where this process runs.
+  - name: inference_pytorchmobile_resnet18_android
+    paradigm: inference
+    framework: PyTorch Mobile
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    device: samsung_galaxy
