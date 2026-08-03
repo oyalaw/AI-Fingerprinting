@@ -62,3 +62,11 @@ executorch
 # assuming this works; if it tries to compile from source, either install
 # a compiler toolchain or skip this one.
 apache-tvm
+
+# CoreML inference. Plain pip install anywhere, no compiler needed --
+# conversion (coremltools.convert) works on any platform. Actually
+# *running* the converted model (MLModel.predict()) only works on
+# macOS/iOS -- confirmed on this project's own Windows dev machine, it
+# raises a clean "Model prediction is only supported on macOS" error, the
+# same shape as TensorRT needing an NVIDIA GPU.
+coremltools

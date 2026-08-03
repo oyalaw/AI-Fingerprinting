@@ -153,3 +153,18 @@ experiments:
     dataset: CIFAR10
     transport: TCP
     device: windows
+
+  # Conversion verified end-to-end on Windows (coremltools.convert with
+  # convert_to="neuralnetwork"); running the converted model was tried and
+  # confirmed to fail with coremltools' own real "prediction only
+  # supported on macOS" error -- structurally the same as TensorRT
+  # needing an NVIDIA GPU. device here is the intended execution target.
+  - name: inference_coreml_resnet18_macbook
+    paradigm: inference
+    framework: CoreML
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    device: macbook
