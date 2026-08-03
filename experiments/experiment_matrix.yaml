@@ -71,3 +71,16 @@ experiments:
     dataset: CIFAR10
     transport: TCP
     device: windows
+
+  # Implemented; conversion needs a Python version `tensorflow` has a wheel
+  # for (via litert-torch), inference itself is TensorFlow-independent
+  # (ai-edge-litert). Validates and lists fine regardless.
+  - name: inference_tflite_resnet18_linux
+    paradigm: inference
+    framework: TensorFlow Lite
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    device: ubuntu

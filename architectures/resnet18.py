@@ -5,12 +5,13 @@ accuracy. num_classes=10 to match CIFAR10. torchvision is imported lazily
 inside build() so registering this architecture doesn't require it
 installed.
 
-Natively built with PyTorch, but `also_supports` TensorRT and OpenVINO:
-both adapters take this same PyTorch module and convert/compile it into
-their own runtime format -- the standard workflow for converter-based
-inference frameworks, since neither defines models itself. See
-core/config.py's compatibility check, frameworks/tensorrt_adapter.py, and
-frameworks/openvino_adapter.py.
+Natively built with PyTorch, but `also_supports` TensorRT, OpenVINO, and
+TensorFlow Lite: all three adapters take this same PyTorch module and
+convert/compile it into their own runtime format -- the standard workflow
+for converter-based inference frameworks, since none of them define models
+itself. See core/config.py's compatibility check,
+frameworks/tensorrt_adapter.py, frameworks/openvino_adapter.py, and
+frameworks/tensorflow_lite_adapter.py.
 """
 from core.registry import ARCHITECTURES
 
@@ -26,6 +27,6 @@ ARCHITECTURES.register(
     implemented=True,
     family="CNN",
     framework="PyTorch",
-    also_supports=["TensorRT", "OpenVINO"],
+    also_supports=["TensorRT", "OpenVINO", "TensorFlow Lite"],
     input_shape=(3, 32, 32),
 )(build)

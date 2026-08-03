@@ -22,6 +22,15 @@ grpcio
 # its CPU plugin runs on any x86/ARM machine, no special hardware needed.
 openvino
 
+# TensorFlow Lite inference. `ai-edge-litert` is the lightweight interpreter
+# (no full TensorFlow needed) for actually running a .tflite model; getting
+# a .tflite in the first place needs `litert-torch` (formerly `ai-edge-torch`)
+# to convert from PyTorch, which pulls in full `tensorflow` -- and neither
+# has a wheel for every Python version yet (check before assuming this
+# installs cleanly on a brand-new Python release).
+ai-edge-litert
+litert-torch
+
 # TensorRT inference (Jetson only -- needs an NVIDIA GPU). NOT a plain pip
 # install on most machines: on Jetson, `tensorrt` ships as a system package
 # via JetPack, so build your venv with `--system-site-packages` instead of
