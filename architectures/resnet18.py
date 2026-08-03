@@ -3,7 +3,14 @@
 point of this project is the traffic it generates, not classification
 accuracy. num_classes=10 to match CIFAR10. torchvision is imported lazily
 inside build() so registering this architecture doesn't require it
-installed."""
+installed.
+
+Natively built with PyTorch, but `also_supports` TensorRT: the TensorRT
+adapter takes this same PyTorch module, exports it to ONNX, and compiles a
+TensorRT engine from that -- the standard TensorRT workflow, since TensorRT
+doesn't define models itself. See core/config.py's compatibility check and
+frameworks/tensorrt_adapter.py.
+"""
 from core.registry import ARCHITECTURES
 
 
@@ -14,5 +21,10 @@ def build(framework_adapter):
 
 
 ARCHITECTURES.register(
-    "ResNet18", implemented=True, family="CNN", framework="PyTorch", input_shape=(3, 32, 32)
+    "ResNet18",
+    implemented=True,
+    family="CNN",
+    framework="PyTorch",
+    also_supports=["TensorRT"],
+    input_shape=(3, 32, 32),
 )(build)

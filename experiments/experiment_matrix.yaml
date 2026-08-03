@@ -47,7 +47,9 @@ experiments:
     num_clients: 2
     num_rounds: 2
 
-  # Not runnable yet -- next promotion candidate given the Jetson emphasis:
+  # Implemented, but hardware-gated -- needs an actual NVIDIA GPU (Jetson)
+  # with TensorRT + pycuda installed to run; validates and lists fine
+  # without them, it just can't build/run an engine.
   - name: inference_tensorrt_resnet18_jetson
     paradigm: inference
     framework: TensorRT

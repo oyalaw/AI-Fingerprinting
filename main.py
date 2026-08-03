@@ -87,14 +87,18 @@ def cmd_interactive(_args):
     device = _prompt_registry_choice("Device", DEVICES)
     framework = _prompt_registry_choice("Framework", FRAMEWORKS)
     family = _prompt_registry_choice("Family", FAMILIES)
+    def _architecture_matches(entry):
+        arch_family = entry.meta.get("family")
+        arch_framework = entry.meta.get("framework")
+        compatible = {arch_framework, *entry.meta.get("also_supports", [])} - {None}
+        family_ok = not arch_family or arch_family.lower() == family.lower()
+        framework_ok = not compatible or framework.lower() in {f.lower() for f in compatible}
+        return family_ok and framework_ok
+
     architecture = _prompt_registry_choice(
         "Architecture",
         ARCHITECTURES,
-        filter_fn=lambda e: (
-            e.meta.get("family", "").lower() == family.lower()
-            and e.meta.get("framework", "").lower() == framework.lower()
-        )
-        or (not e.meta.get("family") and not e.meta.get("framework")),
+        filter_fn=_architecture_matches,
     )
     application = _prompt_registry_choice("Application", APPLICATIONS)
     dataset = _prompt_registry_choice("Dataset", DATASETS)

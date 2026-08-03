@@ -17,3 +17,10 @@ cryptography
 
 # transport/grpc.py is currently a stub, but Flower itself depends on grpcio
 grpcio
+
+# TensorRT inference (Jetson only -- needs an NVIDIA GPU). NOT a plain pip
+# install on most machines: on Jetson, `tensorrt` ships as a system package
+# via JetPack, so build your venv with `--system-site-packages` instead of
+# `pip install tensorrt`. `pycuda` is a normal pip install once CUDA is
+# present. Leave these commented out unless you're actually on Jetson.
+# pycuda

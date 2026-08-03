@@ -15,6 +15,7 @@ implementation behind it -- unimplemented entries are clearly marked
 implemented end-to-end:
 
 - **Inference**: PyTorch -> CNN -> ResNet18 -> Image Classification -> CIFAR10
+- **Inference (Jetson only)**: TensorRT -> CNN -> ResNet18, same combo -- exports the PyTorch module to ONNX and compiles a TensorRT engine. Needs an actual NVIDIA GPU (`tensorrt` + `pycuda`); validates and lists fine without them, it just can't build/run an engine on non-NVIDIA hardware.
 - **Federated learning**: Flower (same PyTorch/ResNet18/CIFAR10 combo, partitioned across simulated clients)
 - **Distributed training**: PyTorch `DistributedDataParallel` (same combo, multi-process gradient sync)
 - **Transport**: TCP and TLS (self-signed dev cert auto-generated)
@@ -74,6 +75,14 @@ python main.py --config config.yaml --role server               # rank 0 / coord
 python main.py --config config.yaml --role client --worker-rank 1
 ```
 
+**TensorRT inference on a Jetson** (set `framework: TensorRT` in the config,
+everything else stays the same as the PyTorch inference example):
+
+```bash
+python main.py --config config.yaml --role server
+python main.py --config config.yaml --role client
+```
+
 ## Other commands
 
 ```bash
@@ -92,7 +101,12 @@ for traffic-fingerprinting classifiers), and `events.jsonl` / `experiment.log`.
 ## Extending
 
 Every axis is a plugin registry (`core/registry.py`). To promote a stub to
-a real implementation (e.g. TensorRT, or a new mobile app for
-Android/iPhone), replace its `raise NotImplementedError` with a real
-implementation and flip `implemented=False` to `True` in its `.register(...)`
-call -- nothing else needs to change; auto-discovery picks it up.
+a real implementation (e.g. a new mobile app for Android/iPhone, or one of
+the other 21 stub frameworks), replace its `raise NotImplementedError` with
+a real implementation and flip `implemented=False` to `True` in its
+`.register(...)` call -- nothing else needs to change; auto-discovery picks
+it up. `frameworks/tensorrt_adapter.py` is a worked example of promoting a
+framework whose architectures aren't natively built in it (it consumes the
+same PyTorch-built architectures via ONNX export -- see each architecture's
+`also_supports` registration metadata and the compatibility check in
+`core/config.py`).

@@ -116,15 +116,20 @@ class ExperimentConfig:
             arch_entry = ARCHITECTURES.get(self.architecture)
             arch_family = arch_entry.meta.get("family")
             arch_framework = arch_entry.meta.get("framework")
+            also_supports = arch_entry.meta.get("also_supports") or []
+            compatible_frameworks = {arch_framework} | set(also_supports) if arch_framework else set(also_supports)
+
             if arch_family and arch_family.lower() != (self.family or "").lower():
                 errors.append(
                     f"architecture '{self.architecture}' belongs to family "
                     f"'{arch_family}', not '{self.family}'"
                 )
-            if arch_framework and arch_framework.lower() != (self.framework or "").lower():
+            if compatible_frameworks and (self.framework or "").lower() not in {
+                f.lower() for f in compatible_frameworks
+            }:
                 errors.append(
-                    f"architecture '{self.architecture}' is implemented for framework "
-                    f"'{arch_framework}', not '{self.framework}'"
+                    f"architecture '{self.architecture}' supports framework(s) "
+                    f"{sorted(compatible_frameworks)}, not '{self.framework}'"
                 )
 
         if errors:
