@@ -124,3 +124,17 @@ experiments:
     dataset: CIFAR10
     transport: TCP
     device: samsung_galaxy
+
+  # Written to ExecuTorch's documented export/host-runtime API but NOT
+  # execution-verified -- `executorch` has no PyPI wheel for this
+  # project's Python version. Validates and lists fine either way; see
+  # frameworks/executorch_adapter.py's docstring before relying on it.
+  - name: inference_executorch_resnet18_iphone
+    paradigm: inference
+    framework: ExecuTorch
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    device: iphone

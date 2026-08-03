@@ -47,3 +47,10 @@ litert-torch
 # `pip install tensorrt`. `pycuda` is a normal pip install once CUDA is
 # present. Leave these commented out unless you're actually on Jetson.
 # pycuda
+
+# ExecuTorch inference. Pure pip install where it has a wheel at all, but
+# (as of this writing) it doesn't ship one for every recent Python version
+# -- check `pip index versions executorch` before assuming it installs
+# cleanly on a brand-new Python release, same caveat as ai-edge-litert/
+# litert-torch above.
+executorch
