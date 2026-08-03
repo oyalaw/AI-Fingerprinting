@@ -1,0 +1,139 @@
+import dataclasses
+import pathlib
+import typing
+
+import yaml
+
+from core.registry import (
+    APPLICATIONS,
+    ARCHITECTURES,
+    CV_FRAMEWORKS,
+    DATASETS,
+    DEVICES,
+    DIFFUSION_FRAMEWORKS,
+    DISTRIBUTED_FRAMEWORKS,
+    FAMILIES,
+    FL_FRAMEWORKS,
+    FRAMEWORKS,
+    GRAPH_FRAMEWORKS,
+    LLM_FRAMEWORKS,
+    SPEECH_FRAMEWORKS,
+    TRANSPORTS,
+    discover_all,
+)
+
+VALID_PARADIGMS = ("inference", "federated_learning", "distributed_training")
+VALID_ROLES = ("client", "server", "standalone")
+
+
+@dataclasses.dataclass
+class ExperimentConfig:
+    paradigm: str
+    role: str
+    device: str
+    framework: str
+    family: str
+    architecture: str
+    application: str
+    dataset: str
+    transport: str = "tcp"
+
+    host: str = "127.0.0.1"
+    port: int = 8765
+    num_requests: int = 50
+    batch_size: int = 1
+
+    capture: bool = True
+    capture_interface: typing.Optional[str] = None
+
+    tls_cert: typing.Optional[str] = None
+    tls_key: typing.Optional[str] = None
+
+    results_dir: str = "experiments/results"
+
+    fl_framework: typing.Optional[str] = None
+    distributed_framework: typing.Optional[str] = None
+    llm_framework: typing.Optional[str] = None
+    cv_framework: typing.Optional[str] = None
+    speech_framework: typing.Optional[str] = None
+    graph_framework: typing.Optional[str] = None
+    diffusion_framework: typing.Optional[str] = None
+
+    num_clients: int = 2
+    num_rounds: int = 3
+    client_index: int = 0  # FL: which CIFAR10 partition this client trains on
+    worker_rank: int = 1  # distributed training: this process's rank (coordinator is always rank 0)
+
+    def validate(self):
+        errors = []
+
+        def check(registry, value, field_name, required=True):
+            if value is None:
+                if required:
+                    errors.append(f"{field_name} is required for this paradigm/application")
+                return
+            if not registry.has(value):
+                errors.append(
+                    f"Unknown {field_name} '{value}'. Run `python main.py --list` to see valid options."
+                )
+                return
+            entry = registry.get(value)
+            if not entry.implemented:
+                errors.append(
+                    f"{field_name} '{value}' is registered but not yet implemented "
+                    f"(see {entry.factory.__module__})."
+                )
+
+        if self.paradigm not in VALID_PARADIGMS:
+            errors.append(f"paradigm must be one of {VALID_PARADIGMS}, got '{self.paradigm}'")
+        if self.role not in VALID_ROLES:
+            errors.append(f"role must be one of {VALID_ROLES}, got '{self.role}'")
+
+        check(DEVICES, self.device, "device")
+        check(FRAMEWORKS, self.framework, "framework")
+        check(FAMILIES, self.family, "family")
+        check(ARCHITECTURES, self.architecture, "architecture")
+        check(APPLICATIONS, self.application, "application")
+        check(DATASETS, self.dataset, "dataset")
+        check(TRANSPORTS, self.transport, "transport")
+
+        if self.paradigm == "federated_learning":
+            check(FL_FRAMEWORKS, self.fl_framework, "fl_framework")
+        if self.paradigm == "distributed_training":
+            check(DISTRIBUTED_FRAMEWORKS, self.distributed_framework, "distributed_framework")
+        if self.application == "text_generation" and self.llm_framework:
+            check(LLM_FRAMEWORKS, self.llm_framework, "llm_framework", required=False)
+        if self.application in ("object_detection", "segmentation") and self.cv_framework:
+            check(CV_FRAMEWORKS, self.cv_framework, "cv_framework", required=False)
+        if self.application == "speech_recognition" and self.speech_framework:
+            check(SPEECH_FRAMEWORKS, self.speech_framework, "speech_framework", required=False)
+        if self.family == "gnn" and self.graph_framework:
+            check(GRAPH_FRAMEWORKS, self.graph_framework, "graph_framework", required=False)
+        if self.family == "diffusion" and self.diffusion_framework:
+            check(DIFFUSION_FRAMEWORKS, self.diffusion_framework, "diffusion_framework", required=False)
+
+        if not errors and ARCHITECTURES.has(self.architecture):
+            arch_entry = ARCHITECTURES.get(self.architecture)
+            arch_family = arch_entry.meta.get("family")
+            arch_framework = arch_entry.meta.get("framework")
+            if arch_family and arch_family.lower() != (self.family or "").lower():
+                errors.append(
+                    f"architecture '{self.architecture}' belongs to family "
+                    f"'{arch_family}', not '{self.family}'"
+                )
+            if arch_framework and arch_framework.lower() != (self.framework or "").lower():
+                errors.append(
+                    f"architecture '{self.architecture}' is implemented for framework "
+                    f"'{arch_framework}', not '{self.framework}'"
+                )
+
+        if errors:
+            raise ValueError("Invalid experiment config:\n  - " + "\n  - ".join(errors))
+
+
+def load_config(path):
+    discover_all()
+    data = yaml.safe_load(pathlib.Path(path).read_text())
+    config = ExperimentConfig(**data)
+    config.validate()
+    return config

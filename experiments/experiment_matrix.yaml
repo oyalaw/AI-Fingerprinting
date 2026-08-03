@@ -1,0 +1,59 @@
+# Example batch-experiment matrix. Each entry is a config overlay on top of
+# config.yaml's defaults. This file isn't executed automatically yet -- it
+# documents the intended format for a future batch-sweep runner, and is a
+# convenient place to keep known-good combos plus combos you're planning to
+# promote from stub to real next.
+
+experiments:
+  - name: inference_pytorch_resnet18_cifar10_tcp
+    paradigm: inference
+    framework: PyTorch
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+
+  - name: inference_pytorch_resnet18_cifar10_tls
+    paradigm: inference
+    framework: PyTorch
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TLS
+
+  - name: fl_flower_resnet18_cifar10
+    paradigm: federated_learning
+    fl_framework: Flower
+    framework: PyTorch
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    num_clients: 2
+    num_rounds: 3
+
+  - name: distributed_ddp_resnet18_cifar10
+    paradigm: distributed_training
+    distributed_framework: DistributedDataParallel
+    framework: PyTorch
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    num_clients: 2
+    num_rounds: 2
+
+  # Not runnable yet -- next promotion candidate given the Jetson emphasis:
+  - name: inference_tensorrt_resnet18_jetson
+    paradigm: inference
+    framework: TensorRT
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    device: jetson_agx_orin

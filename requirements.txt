@@ -1,0 +1,19 @@
+pyyaml
+numpy
+
+# PyTorch inference vertical slice
+torch
+torchvision
+
+# Federated learning vertical slice (Flower)
+flwr
+
+# Packet capture (requires Npcap on Windows / libpcap on Linux & macOS,
+# plus admin/root privileges to actually capture -- see README.md)
+scapy
+
+# TLS transport: auto-generates a self-signed dev cert
+cryptography
+
+# transport/grpc.py is currently a stub, but Flower itself depends on grpcio
+grpcio

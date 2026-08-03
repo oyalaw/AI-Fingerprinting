@@ -1,0 +1,40 @@
+# Example experiment config, wired to the one fully-implemented vertical
+# slice: PyTorch -> CNN -> ResNet18 -> Image Classification -> CIFAR10,
+# client/server over TCP. Run `python main.py --list` to see every other
+# selectable option (implemented and stub).
+#
+# Two-terminal run:
+#   python main.py --config config.yaml --role server
+#   python main.py --config config.yaml --role client
+
+paradigm: inference          # inference | federated_learning | distributed_training
+role: server                 # client | server | standalone (overridden by --role)
+device: windows              # see `python main.py --list` under "device" for all options
+
+framework: PyTorch
+family: CNN
+architecture: ResNet18
+application: Image Classification
+dataset: CIFAR10
+transport: TCP                # TCP | TLS (gRPC/HTTP are stubs for now)
+
+host: 127.0.0.1
+port: 8765
+num_requests: 20
+batch_size: 1
+
+capture: true                 # requires scapy + Npcap(Windows)/libpcap(Linux/macOS) + privileges
+capture_interface: null       # null = scapy default interface; see traffic/packet_features.py
+
+tls_cert: null                 # only used when transport: TLS; auto-generates a dev cert if unset
+tls_key: null
+
+results_dir: experiments/results
+
+# Only used for federated_learning / distributed_training paradigms:
+fl_framework: null             # e.g. Flower
+distributed_framework: null    # e.g. DistributedDataParallel
+num_clients: 2
+num_rounds: 3
+client_index: 0
+worker_rank: 1

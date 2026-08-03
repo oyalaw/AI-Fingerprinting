@@ -1,0 +1,19 @@
+.claude/settings.local.json
+
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# Downloaded datasets (CIFAR10 etc. via torchvision)
+data/
+
+# Per-experiment output: pcaps, sequences, ground truth, logs, dev TLS certs
+experiments/results/*/
+experiments/results/.dev_certs/
+!experiments/results/.gitkeep
+
+*.egg-info/
+.pytest_cache/
