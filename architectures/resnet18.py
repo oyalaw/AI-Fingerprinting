@@ -7,13 +7,16 @@ installed.
 
 Natively built with PyTorch, but `also_supports` TensorRT, OpenVINO,
 TensorFlow Lite, ONNX Runtime, ONNX Runtime Mobile, PyTorch Mobile,
-ExecuTorch, TVM, and CoreML: all nine adapters take this same PyTorch
-module and convert/compile it into their own runtime format -- the
-standard workflow for converter-based inference frameworks, since none of
-them define models itself. See core/config.py's compatibility check,
-frameworks/tensorrt_adapter.py, frameworks/openvino_adapter.py,
-frameworks/tensorflow_lite_adapter.py, frameworks/onnx_runtime_adapter.py,
-frameworks/onnx_runtime_mobile_adapter.py,
+ExecuTorch, TVM, CoreML, and MPS Backend: the first nine adapters
+convert/compile this same PyTorch module into their own runtime format --
+the standard workflow for converter-based inference frameworks, since
+none of them define models itself. MPS Backend is different in kind: it's
+PyTorch's own execution backend (`torch.device("mps")`), not a converter,
+so it reuses this exact module unconverted, just moved onto different
+hardware -- see frameworks/mps_backend_adapter.py. See also
+core/config.py's compatibility check, frameworks/tensorrt_adapter.py,
+frameworks/openvino_adapter.py, frameworks/tensorflow_lite_adapter.py,
+frameworks/onnx_runtime_adapter.py, frameworks/onnx_runtime_mobile_adapter.py,
 frameworks/pytorch_mobile_adapter.py, frameworks/executorch_adapter.py,
 frameworks/tvm_adapter.py, and frameworks/coreml_adapter.py.
 """
@@ -41,6 +44,7 @@ ARCHITECTURES.register(
         "ExecuTorch",
         "TVM",
         "CoreML",
+        "MPS Backend",
     ],
     input_shape=(3, 32, 32),
 )(build)

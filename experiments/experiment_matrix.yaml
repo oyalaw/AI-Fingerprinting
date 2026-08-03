@@ -168,3 +168,19 @@ experiments:
     dataset: CIFAR10
     transport: TCP
     device: macbook
+
+  # PyTorch's own MPS execution backend, not a converter -- reuses
+  # ResNet18 unconverted, just moved onto torch.device("mps"). Verified
+  # directly on this Windows machine: torch.backends.mps.is_available()
+  # correctly reports False (no Metal backend compiled into non-Apple
+  # torch builds), and the adapter raises a clear error at build() time
+  # rather than silently falling back to CPU.
+  - name: inference_mpsbackend_resnet18_macbook
+    paradigm: inference
+    framework: MPS Backend
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    device: macbook
