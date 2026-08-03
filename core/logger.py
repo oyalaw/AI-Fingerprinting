@@ -8,6 +8,10 @@ def get_logger(name, results_dir=None):
     if logger.handlers:
         return logger
     logger.setLevel(logging.INFO)
+    # Don't propagate to the root logger: some dependencies (e.g. onnxruntime's
+    # ORT-format conversion tool) call logging.basicConfig()/attach their own
+    # root handler, which would otherwise print every record here a second time.
+    logger.propagate = False
     formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
     stream_handler = logging.StreamHandler(sys.stdout)

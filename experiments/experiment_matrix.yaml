@@ -96,3 +96,17 @@ experiments:
     dataset: CIFAR10
     transport: TCP
     device: windows
+
+  # Implemented and verified end-to-end (model prep/conversion + desktop
+  # inference); real on-device NNAPI/CoreML execution needs a native
+  # Android/iOS app, out of scope -- device here is the intended target,
+  # not where this process literally runs.
+  - name: inference_onnxruntimemobile_resnet18_iphone
+    paradigm: inference
+    framework: ONNX Runtime Mobile
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    device: iphone

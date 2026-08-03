@@ -19,6 +19,7 @@ implemented end-to-end:
 - **Inference (Jetson only)**: TensorRT -> CNN -> ResNet18, same combo -- exports the PyTorch module to ONNX and compiles a TensorRT engine. Needs an actual NVIDIA GPU (`tensorrt` + `pycuda`); validates and lists fine without them, it just can't build/run an engine on non-NVIDIA hardware.
 - **Inference**: TensorFlow Lite -> CNN -> ResNet18, same combo -- converts the PyTorch module to a `.tflite` flatbuffer via `litert-torch` (Google's PyTorch->TFLite converter), then runs it through the standard TFLite interpreter API. Needs `litert-torch` (pulls in full `tensorflow`) plus `ai-edge-litert` for inference; both are normal pip installs but don't yet have wheels for every Python version -- validates and lists fine either way, conversion just needs a Python version `tensorflow` supports.
 - **Inference**: ONNX Runtime -> CNN -> ResNet18, same combo -- exports the PyTorch module to ONNX (same export step TensorRT uses) and runs it through `onnxruntime.InferenceSession`. Pure Python/C++ wheel, no special hardware needed (this one's verified end-to-end too, including a real client/server roundtrip).
+- **Inference**: ONNX Runtime Mobile -> CNN -> ResNet18, same combo -- runs the same ONNX export through ORT's real mobile model-prep pipeline (`onnxruntime.tools.convert_onnx_models_to_ort`, the API behind the official conversion CLI) to produce the same size/latency-optimized `.ort` flatbuffer format a real Android/iOS app would ship, then loads and runs it via `InferenceSession` on `CPUExecutionProvider` as a stand-in for the on-device NNAPI/CoreML execution provider a real mobile build would pick. Verified end-to-end here, including a real client/server roundtrip -- actual on-device NNAPI/CoreML execution needs a native Android/iOS app, out of scope for the same reason noted under Devices below.
 - **Federated learning**: Flower (same PyTorch/ResNet18/CIFAR10 combo, partitioned across simulated clients)
 - **Distributed training**: PyTorch `DistributedDataParallel` (same combo, multi-process gradient sync)
 - **Transport**: TCP and TLS (self-signed dev cert auto-generated)
@@ -78,11 +79,11 @@ python main.py --config config.yaml --role server               # rank 0 / coord
 python main.py --config config.yaml --role client --worker-rank 1
 ```
 
-**OpenVINO, TensorRT, TensorFlow Lite, or ONNX Runtime inference** (set
-`framework:` to `OpenVINO`, `TensorRT`, `TensorFlow Lite`, or `ONNX Runtime`
-in the config, everything else stays the same as the PyTorch inference
-example -- all but TensorRT run on any machine, TensorRT needs an
-NVIDIA/Jetson GPU):
+**OpenVINO, TensorRT, TensorFlow Lite, ONNX Runtime, or ONNX Runtime
+Mobile inference** (set `framework:` to `OpenVINO`, `TensorRT`,
+`TensorFlow Lite`, `ONNX Runtime`, or `ONNX Runtime Mobile` in the config,
+everything else stays the same as the PyTorch inference example -- all but
+TensorRT run on any machine, TensorRT needs an NVIDIA/Jetson GPU):
 
 ```bash
 python main.py --config config.yaml --role server
