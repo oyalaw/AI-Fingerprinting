@@ -70,3 +70,58 @@ apache-tvm
 # raises a clean "Model prediction is only supported on macOS" error, the
 # same shape as TensorRT needing an NVIDIA GPU.
 coremltools
+
+# --- Everything below is written to its framework's documented API but
+# NOT execution-verified in this project's environment -- each one was
+# checked against real pip/wheel availability first and landed here
+# specifically because that check failed. See README.md's framework list
+# and each frameworks/*_adapter.py docstring for the specific blocker.
+
+# TensorFlow inference (via onnx2tf conversion). No wheel for this
+# project's Python version at all (confirmed via `pip index versions
+# tensorflow`) -- check that command yourself before assuming either of
+# these install.
+# tensorflow
+# onnx2tf
+
+# TensorFlow Lite Micro inference. Not a PyPI package at all -- there is
+# no `pip install` path, only a from-source Bazel build against
+# github.com/tensorflow/tflite-micro. Left commented out; this isn't
+# something `pip install -r requirements.txt` can ever satisfy as-is.
+# tflite-micro (not on PyPI -- build from source)
+
+# MediaPipe inference. Installs cleanly (confirmed) -- what's blocked is
+# the TensorFlow Lite conversion step above, not mediapipe itself.
+mediapipe
+
+# NCNN inference (via pnnx conversion). Both are normal pip installs, but
+# pnnx.export() runs a compiled binary bundled in its wheel via
+# subprocess -- deliberately not exercised in this project without an
+# explicit decision to do so each time. Uncomment only if you've reviewed
+# what pnnx's bundled binary does.
+# ncnn
+# pnnx
+
+# SNPE inference (Qualcomm). Not a pip package -- requires manually
+# downloading the Qualcomm Neural Processing SDK (free developer account)
+# from https://qpm.qualcomm.com/ and setting SNPE_ROOT.
+
+# RKNN inference (Rockchip). `rknn-toolkit2` has no wheel for this
+# platform/Python version (confirmed via `pip index versions
+# rknn-toolkit2`) -- Rockchip only publishes for specific Linux + Python
+# combinations.
+# rknn-toolkit2
+
+# Arm NN inference. `pyarmnn` isn't a normal PyPI package on x86_64
+# Windows -- get prebuilt wheels matched to a specific Arm NN release from
+# github.com/ARM-software/armnn/releases, or build from source, targeting
+# an actual Arm platform (Android, Arm Linux, Jetson's Arm CPU).
+
+# DeepStream inference (NVIDIA). `pyds` ships only inside the DeepStream
+# SDK container/install (Linux + NVIDIA GPU + DeepStream SDK) -- not a pip
+# package at all.
+
+# Edge Impulse inference. `edge_impulse_linux` runs models already
+# exported from Edge Impulse Studio (cloud, account required) -- there's
+# no local "convert my own architecture" step for it to need here.
+# edge-impulse-linux

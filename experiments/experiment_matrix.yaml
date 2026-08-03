@@ -184,3 +184,130 @@ experiments:
     dataset: CIFAR10
     transport: TCP
     device: macbook
+
+  # Written to onnx2tf's documented conversion API but NOT
+  # execution-verified -- `tensorflow` has no wheel for this project's
+  # Python version at all. Validates and lists fine either way; see
+  # frameworks/tensorflow_adapter.py's docstring before relying on it.
+  - name: inference_tensorflow_resnet18_windows
+    paradigm: inference
+    framework: TensorFlow
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    device: windows
+
+  # Written to TFLite Micro's documented host-runtime API but NOT
+  # execution-verified -- there's no PyPI package at all for `tflite-micro`,
+  # only a from-source Bazel build. Validates and lists fine; see
+  # frameworks/tensorflow_lite_micro_adapter.py's docstring first.
+  - name: inference_tensorflowlitemicro_resnet18_android
+    paradigm: inference
+    framework: TensorFlow Lite Micro
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    device: samsung_galaxy
+
+  # Written to MediaPipe's documented Tasks + MetadataWriter API but NOT
+  # execution-verified -- mediapipe itself installs cleanly, but its
+  # model-prep step needs the same blocked TFLite conversion above.
+  # Validates and lists fine; see frameworks/mediapipe_adapter.py first.
+  - name: inference_mediapipe_resnet18_iphone
+    paradigm: inference
+    framework: MediaPipe
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    device: iphone
+
+  # Written to pnnx/ncnn's documented conversion + inference API but
+  # deliberately NOT run here -- pnnx.export() shells out to a bundled
+  # compiled binary, left unexecuted by explicit decision. Validates and
+  # lists fine; see frameworks/ncnn_adapter.py's docstring first.
+  - name: inference_ncnn_resnet18_raspberrypi
+    paradigm: inference
+    framework: NCNN
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    device: raspberry_pi_5
+
+  # Written to the Qualcomm Neural Processing SDK's documented CLI
+  # workflow but NOT execution-verified -- not a pip package at all,
+  # needs a manually downloaded SDK + Qualcomm developer account.
+  # Validates and lists fine; see frameworks/snpe_adapter.py first.
+  - name: inference_snpe_resnet18_googlepixel
+    paradigm: inference
+    framework: SNPE
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    device: google_pixel
+
+  # Written to rknn-toolkit2's documented API (host-side CPU simulator
+  # mode, no real Rockchip NPU needed for that specific path) but NOT
+  # execution-verified -- no wheel for this platform/Python version.
+  # Validates and lists fine; see frameworks/rknn_adapter.py first.
+  - name: inference_rknn_resnet18_ubuntu
+    paradigm: inference
+    framework: RKNN
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    device: ubuntu
+
+  # Written to pyarmnn's documented API but NOT execution-verified --
+  # not a normal PyPI package on x86_64 Windows, targets Arm platforms.
+  # Validates and lists fine; see frameworks/arm_nn_adapter.py first.
+  - name: inference_armnn_resnet18_jetsonxavier
+    paradigm: inference
+    framework: Arm NN
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    device: jetson_xavier
+
+  # Written to the documented GStreamer + pyds pipeline shape but NOT
+  # execution-verified, and the most speculative adapter in this project
+  # given DeepStream's stream-oriented architecture. Validates and lists
+  # fine; see frameworks/deepstream_adapter.py's docstring first.
+  - name: inference_deepstream_resnet18_jetsonagxorin
+    paradigm: inference
+    framework: DeepStream
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    device: jetson_agx_orin
+
+  # Architecturally different from every other entry above: Edge Impulse
+  # has no local conversion path for an arbitrary PyTorch architecture,
+  # models come from Edge Impulse Studio (cloud, account required).
+  # load_model raises a clear error for ResNet18 specifically since this
+  # project has no Edge Impulse export for it. See
+  # frameworks/edge_impulse_adapter.py's docstring first.
+  - name: inference_edgeimpulse_resnet18_jetsonorinnano
+    paradigm: inference
+    framework: Edge Impulse
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    device: jetson_orin_nano
