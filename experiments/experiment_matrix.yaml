@@ -138,3 +138,18 @@ experiments:
     dataset: CIFAR10
     transport: TCP
     device: iphone
+
+  # Written to TVM's documented Relay-frontend/graph_executor API but NOT
+  # execution-verified -- `apache-tvm` has no prebuilt wheel here and
+  # falls back to a from-source CMake build that needs a C/C++ compiler
+  # toolchain this machine doesn't have. Validates and lists fine; see
+  # frameworks/tvm_adapter.py's docstring before relying on it.
+  - name: inference_tvm_resnet18_windows
+    paradigm: inference
+    framework: TVM
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    device: windows

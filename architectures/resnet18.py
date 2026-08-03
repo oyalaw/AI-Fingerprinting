@@ -6,15 +6,16 @@ inside build() so registering this architecture doesn't require it
 installed.
 
 Natively built with PyTorch, but `also_supports` TensorRT, OpenVINO,
-TensorFlow Lite, ONNX Runtime, ONNX Runtime Mobile, PyTorch Mobile, and
-ExecuTorch: all seven adapters take this same PyTorch module and
+TensorFlow Lite, ONNX Runtime, ONNX Runtime Mobile, PyTorch Mobile,
+ExecuTorch, and TVM: all eight adapters take this same PyTorch module and
 convert/compile it into their own runtime format -- the standard workflow
 for converter-based inference frameworks, since none of them define
 models itself. See core/config.py's compatibility check,
 frameworks/tensorrt_adapter.py, frameworks/openvino_adapter.py,
 frameworks/tensorflow_lite_adapter.py, frameworks/onnx_runtime_adapter.py,
 frameworks/onnx_runtime_mobile_adapter.py,
-frameworks/pytorch_mobile_adapter.py, and frameworks/executorch_adapter.py.
+frameworks/pytorch_mobile_adapter.py, frameworks/executorch_adapter.py,
+and frameworks/tvm_adapter.py.
 """
 from core.registry import ARCHITECTURES
 
@@ -38,6 +39,7 @@ ARCHITECTURES.register(
         "ONNX Runtime Mobile",
         "PyTorch Mobile",
         "ExecuTorch",
+        "TVM",
     ],
     input_shape=(3, 32, 32),
 )(build)

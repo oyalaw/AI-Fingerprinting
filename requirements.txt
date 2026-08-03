@@ -54,3 +54,11 @@ litert-torch
 # cleanly on a brand-new Python release, same caveat as ai-edge-litert/
 # litert-torch above.
 executorch
+
+# TVM inference. `apache-tvm` has no prebuilt wheel for every platform --
+# where none exists, pip tries to build its `apache-tvm-ffi` component
+# from source via CMake, which needs a working C/C++ compiler toolchain
+# installed and on PATH. Check `pip install apache-tvm` succeeds before
+# assuming this works; if it tries to compile from source, either install
+# a compiler toolchain or skip this one.
+apache-tvm

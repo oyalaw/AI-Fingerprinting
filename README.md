@@ -22,6 +22,7 @@ implemented end-to-end:
 - **Inference**: ONNX Runtime Mobile -> CNN -> ResNet18, same combo -- runs the same ONNX export through ORT's real mobile model-prep pipeline (`onnxruntime.tools.convert_onnx_models_to_ort`, the API behind the official conversion CLI) to produce the same size/latency-optimized `.ort` flatbuffer format a real Android/iOS app would ship, then loads and runs it via `InferenceSession` on `CPUExecutionProvider` as a stand-in for the on-device NNAPI/CoreML execution provider a real mobile build would pick. Verified end-to-end here, including a real client/server roundtrip -- actual on-device NNAPI/CoreML execution needs a native Android/iOS app, out of scope for the same reason noted under Devices below.
 - **Inference**: PyTorch Mobile -> CNN -> ResNet18, same combo -- `torch.jit.trace`s the module, runs Meta's real `optimize_for_mobile` pass, saves via `_save_for_lite_interpreter` (the actual `.ptl` mobile format), then loads it back with `_load_for_lite_interpreter` and runs inference on that loaded module -- no extra dependency at all, it's all in `torch`. Verified end-to-end, including a real client/server roundtrip; on a PyTorch build without XNNPACK (e.g. this project's own dev machine), `optimize_for_mobile` isn't available and the adapter falls back to saving the unoptimized traced module with a warning, rather than failing.
 - **Inference (not execution-verified here)**: ExecuTorch -> CNN -> ResNet18, same combo -- Meta's newer PyTorch Mobile successor. `torch.export.export`s the module, lowers it with `executorch.exir.to_edge`, produces real `.pte` program bytes via `.to_executorch()`, then loads and runs that `.pte` through ExecuTorch's own documented host runtime (`_load_for_executorch`). Unlike every other adapter above, this one's blocked by dependency availability rather than hardware: `executorch` currently has no PyPI wheel for this project's Python version, so it validates and lists fine but hasn't actually been run -- treat frameworks/executorch_adapter.py as written-to-the-docs rather than verified, and re-check it against current ExecuTorch docs before relying on it.
+- **Inference (not execution-verified here)**: TVM -> CNN -> ResNet18, same combo -- Apache's compiler-stack framework. `torch.jit.trace`s the module, imports it into TVM's Relay IR via `relay.frontend.from_pytorch`, compiles for `target="llvm"` (generic CPU codegen), and runs it through `tvm.contrib.graph_executor`. Also blocked by dependency availability, not hardware: `apache-tvm` has no prebuilt wheel here and tries to build its `apache-tvm-ffi` component from source via CMake, which fails with no C/C++ compiler toolchain configured on this machine -- installing one just to build this package was judged too invasive to do unprompted. Validates and lists fine; treat frameworks/tvm_adapter.py the same as executorch_adapter.py -- written-to-the-docs, not verified, and note TVM has been mid-transition from Relay IR (used here) to a newer Relax IR across recent releases.
 - **Federated learning**: Flower (same PyTorch/ResNet18/CIFAR10 combo, partitioned across simulated clients)
 - **Distributed training**: PyTorch `DistributedDataParallel` (same combo, multi-process gradient sync)
 - **Transport**: TCP and TLS (self-signed dev cert auto-generated)
@@ -82,12 +83,13 @@ python main.py --config config.yaml --role client --worker-rank 1
 ```
 
 **OpenVINO, TensorRT, TensorFlow Lite, ONNX Runtime, ONNX Runtime Mobile,
-PyTorch Mobile, or ExecuTorch inference** (set `framework:` to `OpenVINO`,
-`TensorRT`, `TensorFlow Lite`, `ONNX Runtime`, `ONNX Runtime Mobile`,
-`PyTorch Mobile`, or `ExecuTorch` in the config, everything else stays the
-same as the PyTorch inference example -- all but TensorRT run on any
-machine, TensorRT needs an NVIDIA/Jetson GPU; ExecuTorch additionally
-needs a Python version it ships a wheel for):
+PyTorch Mobile, ExecuTorch, or TVM inference** (set `framework:` to
+`OpenVINO`, `TensorRT`, `TensorFlow Lite`, `ONNX Runtime`,
+`ONNX Runtime Mobile`, `PyTorch Mobile`, `ExecuTorch`, or `TVM` in the
+config, everything else stays the same as the PyTorch inference example --
+all but TensorRT run on any machine, TensorRT needs an NVIDIA/Jetson GPU;
+ExecuTorch and TVM additionally need a Python/toolchain their respective
+packages can actually build/install with):
 
 ```bash
 python main.py --config config.yaml --role server
