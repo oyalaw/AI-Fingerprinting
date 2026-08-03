@@ -18,6 +18,16 @@ cryptography
 # transport/grpc.py is currently a stub, but Flower itself depends on grpcio
 grpcio
 
+# ONNX export (used by frameworks/onnx_runtime_adapter.py and
+# frameworks/tensorrt_adapter.py, both of which go through torch.onnx.export).
+# onnxscript is needed by current PyTorch's ONNX exporter machinery even
+# when forcing the legacy exporter path (dynamo=False).
+onnxscript
+
+# ONNX Runtime inference. Pure Python/C++ wheel, no special hardware needed
+# -- runs on any platform ONNX Runtime ships a wheel for.
+onnxruntime
+
 # OpenVINO inference. Unlike TensorRT, this is a normal pip install and
 # its CPU plugin runs on any x86/ARM machine, no special hardware needed.
 openvino

@@ -83,6 +83,11 @@ class TensorRTAdapter(FrameworkAdapter):
             output_names=["output"],
             dynamic_axes={"input": {0: "batch"}, "output": {0: "batch"}},
             opset_version=17,
+            dynamo=False,  # newer PyTorch's dynamo exporter warns dynamic_axes
+            # isn't recommended for it, and on some versions emits verbose
+            # Unicode progress output that crashes non-UTF-8 consoles -- found
+            # via the equivalent ONNX Runtime code path, which is actually
+            # testable without a GPU; this one couldn't be exercised directly.
         )
         onnx_bytes = onnx_buffer.getvalue()
 

@@ -18,6 +18,7 @@ implemented end-to-end:
 - **Inference**: OpenVINO -> CNN -> ResNet18, same combo -- converts the PyTorch module straight to OpenVINO IR and compiles it for `CPU` by default. Runs on any x86/ARM machine, no special hardware needed (this one's verified end-to-end, including a real client/server roundtrip).
 - **Inference (Jetson only)**: TensorRT -> CNN -> ResNet18, same combo -- exports the PyTorch module to ONNX and compiles a TensorRT engine. Needs an actual NVIDIA GPU (`tensorrt` + `pycuda`); validates and lists fine without them, it just can't build/run an engine on non-NVIDIA hardware.
 - **Inference**: TensorFlow Lite -> CNN -> ResNet18, same combo -- converts the PyTorch module to a `.tflite` flatbuffer via `litert-torch` (Google's PyTorch->TFLite converter), then runs it through the standard TFLite interpreter API. Needs `litert-torch` (pulls in full `tensorflow`) plus `ai-edge-litert` for inference; both are normal pip installs but don't yet have wheels for every Python version -- validates and lists fine either way, conversion just needs a Python version `tensorflow` supports.
+- **Inference**: ONNX Runtime -> CNN -> ResNet18, same combo -- exports the PyTorch module to ONNX (same export step TensorRT uses) and runs it through `onnxruntime.InferenceSession`. Pure Python/C++ wheel, no special hardware needed (this one's verified end-to-end too, including a real client/server roundtrip).
 - **Federated learning**: Flower (same PyTorch/ResNet18/CIFAR10 combo, partitioned across simulated clients)
 - **Distributed training**: PyTorch `DistributedDataParallel` (same combo, multi-process gradient sync)
 - **Transport**: TCP and TLS (self-signed dev cert auto-generated)
@@ -77,10 +78,11 @@ python main.py --config config.yaml --role server               # rank 0 / coord
 python main.py --config config.yaml --role client --worker-rank 1
 ```
 
-**OpenVINO, TensorRT, or TensorFlow Lite inference** (set `framework:` to
-`OpenVINO`, `TensorRT`, or `TensorFlow Lite` in the config, everything else
-stays the same as the PyTorch inference example -- OpenVINO and TFLite run
-on any machine, TensorRT needs an NVIDIA/Jetson GPU):
+**OpenVINO, TensorRT, TensorFlow Lite, or ONNX Runtime inference** (set
+`framework:` to `OpenVINO`, `TensorRT`, `TensorFlow Lite`, or `ONNX Runtime`
+in the config, everything else stays the same as the PyTorch inference
+example -- all but TensorRT run on any machine, TensorRT needs an
+NVIDIA/Jetson GPU):
 
 ```bash
 python main.py --config config.yaml --role server

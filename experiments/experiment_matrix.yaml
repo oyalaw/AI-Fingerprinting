@@ -84,3 +84,15 @@ experiments:
     dataset: CIFAR10
     transport: TCP
     device: ubuntu
+
+  # Implemented and verified end-to-end -- pure Python/C++ wheel, no
+  # special hardware required.
+  - name: inference_onnxruntime_resnet18_windows
+    paradigm: inference
+    framework: ONNX Runtime
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    device: windows
