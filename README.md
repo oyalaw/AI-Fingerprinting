@@ -15,6 +15,7 @@ implementation behind it -- unimplemented entries are clearly marked
 implemented end-to-end:
 
 - **Inference**: PyTorch -> CNN -> ResNet18 -> Image Classification -> CIFAR10
+- **Inference**: OpenVINO -> CNN -> ResNet18, same combo -- converts the PyTorch module straight to OpenVINO IR and compiles it for `CPU` by default. Runs on any x86/ARM machine, no special hardware needed (this one's verified end-to-end, including a real client/server roundtrip).
 - **Inference (Jetson only)**: TensorRT -> CNN -> ResNet18, same combo -- exports the PyTorch module to ONNX and compiles a TensorRT engine. Needs an actual NVIDIA GPU (`tensorrt` + `pycuda`); validates and lists fine without them, it just can't build/run an engine on non-NVIDIA hardware.
 - **Federated learning**: Flower (same PyTorch/ResNet18/CIFAR10 combo, partitioned across simulated clients)
 - **Distributed training**: PyTorch `DistributedDataParallel` (same combo, multi-process gradient sync)
@@ -75,8 +76,10 @@ python main.py --config config.yaml --role server               # rank 0 / coord
 python main.py --config config.yaml --role client --worker-rank 1
 ```
 
-**TensorRT inference on a Jetson** (set `framework: TensorRT` in the config,
-everything else stays the same as the PyTorch inference example):
+**OpenVINO or TensorRT inference** (set `framework: OpenVINO` or
+`framework: TensorRT` in the config, everything else stays the same as the
+PyTorch inference example -- OpenVINO runs on any machine, TensorRT needs
+an NVIDIA/Jetson GPU):
 
 ```bash
 python main.py --config config.yaml --role server

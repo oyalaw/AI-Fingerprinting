@@ -59,3 +59,15 @@ experiments:
     dataset: CIFAR10
     transport: TCP
     device: jetson_agx_orin
+
+  # Implemented and verified end-to-end -- OpenVINO's CPU plugin runs on
+  # any x86/ARM machine, no special hardware required.
+  - name: inference_openvino_resnet18_windows
+    paradigm: inference
+    framework: OpenVINO
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    device: windows
