@@ -19,6 +19,10 @@ fedlab
 # fl_frameworks/nvflare_adapter.py's docstring before relying on it.
 nvflare
 
+# FairScale distributed-training slice (OSS + ShardedDataParallel) --
+# pure PyTorch extension, no special hardware needed.
+fairscale
+
 # Packet capture (requires Npcap on Windows / libpcap on Linux & macOS,
 # plus admin/root privileges to actually capture -- see README.md)
 scapy

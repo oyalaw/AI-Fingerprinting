@@ -82,6 +82,25 @@ experiments:
     num_clients: 2
     num_rounds: 2
 
+  # OSS + ShardedDataParallel over the same gloo/TCP process group as the
+  # DDP entry above. The FairScale-specific mechanics were verified
+  # end-to-end via an isolated two-rank synthetic-data script (both ranks
+  # completed real forward/backward/step cycles cleanly); the full
+  # main.py path with real CIFAR10 wasn't run start-to-finish here purely
+  # due to a slow download in this environment, not anything specific to
+  # FairScale -- see distributed_frameworks/fairscale_adapter.py's docstring.
+  - name: distributed_fairscale_resnet18_cifar10
+    paradigm: distributed_training
+    distributed_framework: FairScale
+    framework: PyTorch
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    num_clients: 2
+    num_rounds: 2
+
   # Implemented, but hardware-gated -- needs an actual NVIDIA GPU (Jetson)
   # with TensorRT + pycuda installed to run; validates and lists fine
   # without them, it just can't build/run an engine.
