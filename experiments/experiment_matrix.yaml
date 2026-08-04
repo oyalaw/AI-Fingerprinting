@@ -311,3 +311,19 @@ experiments:
     dataset: CIFAR10
     transport: TCP
     device: jetson_orin_nano
+
+  # Blocked by a trust concern, not a dependency/hardware gap: this
+  # project's mnnconvert --help test triggered an undisclosed pip install
+  # of unrelated network dependencies instead of printing usage. mnn has
+  # been uninstalled here as a precaution; the conversion subprocess call
+  # is written but deliberately unexercised. See
+  # frameworks/mnn_adapter.py's docstring before running it yourself.
+  - name: inference_mnn_resnet18_raspberrypi
+    paradigm: inference
+    framework: MNN
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    device: raspberry_pi_5

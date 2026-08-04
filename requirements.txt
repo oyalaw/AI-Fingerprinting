@@ -102,6 +102,17 @@ mediapipe
 # ncnn
 # pnnx
 
+# MNN inference (Alibaba). Normal pip install, but its bundled
+# mnnconvert.exe has confirmed, undisclosed pip-install-on-`--help`
+# behavior in this project (tried `mnnconvert --help` directly: instead
+# of printing usage, it silently started `pip install
+# aliyun-log-python-sdk` and a chain of unrelated network dependencies --
+# no --help output at all). Nothing from that completed here, and mnn has
+# been uninstalled from this project's environment as a precaution. See
+# frameworks/mnn_adapter.py's docstring before installing this or running
+# its conversion step -- deliberately left unexercised.
+# mnn
+
 # SNPE inference (Qualcomm). Not a pip package -- requires manually
 # downloading the Qualcomm Neural Processing SDK (free developer account)
 # from https://qpm.qualcomm.com/ and setting SNPE_ROOT.
