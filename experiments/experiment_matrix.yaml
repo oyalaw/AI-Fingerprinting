@@ -74,6 +74,18 @@ experiments:
     dataset: IMDB
     transport: TCP
 
+  # Reuses the BERT/Sentiment Analysis/IMDB pipeline unchanged.
+  # DistilBERT's forward() takes only input_ids/attention_mask, no
+  # token_type_ids -- see architectures/distilbert.py's docstring.
+  - name: inference_pytorch_distilbert_imdb
+    paradigm: inference
+    framework: PyTorch
+    family: Transformer
+    architecture: DistilBERT
+    application: Sentiment Analysis
+    dataset: IMDB
+    transport: TCP
+
   - name: fl_flower_resnet18_cifar10
     paradigm: federated_learning
     fl_framework: Flower
