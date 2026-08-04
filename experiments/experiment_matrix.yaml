@@ -45,6 +45,19 @@ experiments:
     dataset: CIFAR10
     transport: TCP
 
+  # First Transformer-family architecture. Verified end-to-end through
+  # PyTorch; deliberately not paired with OpenVINO here -- conversion
+  # fails on ViT specifically (Dropout trace-consistency false positive),
+  # see architectures/vit.py's docstring.
+  - name: inference_pytorch_vit_cifar10
+    paradigm: inference
+    framework: PyTorch
+    family: Transformer
+    architecture: ViT
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+
   - name: fl_flower_resnet18_cifar10
     paradigm: federated_learning
     fl_framework: Flower
