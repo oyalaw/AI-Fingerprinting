@@ -13,6 +13,12 @@ flwr
 # relying on it.
 fedlab
 
+# NVFlare: `import nvflare` fails outright on Windows (needs the POSIX-only
+# `resource` module -- Linux/macOS only), and its simple simulator_run() API
+# produces no real network traffic even where it does run -- see
+# fl_frameworks/nvflare_adapter.py's docstring before relying on it.
+nvflare
+
 # Packet capture (requires Npcap on Windows / libpcap on Linux & macOS,
 # plus admin/root privileges to actually capture -- see README.md)
 scapy

@@ -52,6 +52,24 @@ experiments:
     num_clients: 1
     num_rounds: 1
 
+  # Two separate real problems, both confirmed directly, not just
+  # untested: import nvflare fails outright on Windows (needs the
+  # POSIX-only `resource` module), and separately, the simulator_run()
+  # API this adapter uses runs every client in-process over in-memory
+  # queues even on a supported OS -- no real network traffic at all. See
+  # fl_frameworks/nvflare_adapter.py's docstring for both.
+  - name: fl_nvflare_resnet18_cifar10
+    paradigm: federated_learning
+    fl_framework: NVFlare
+    framework: PyTorch
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    num_clients: 2
+    num_rounds: 1
+
   - name: distributed_ddp_resnet18_cifar10
     paradigm: distributed_training
     distributed_framework: DistributedDataParallel
