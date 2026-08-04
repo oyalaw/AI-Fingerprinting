@@ -1,11 +1,17 @@
-"""MobileNetV2 -- registered but not yet implemented."""
+"""MobileNetV2 -- real implementation, same pattern as ResNet18: random
+init (no pretrained download needed), num_classes=10 to match CIFAR10.
+torchvision is imported lazily inside build() so registering this
+architecture doesn't require it installed.
+"""
 from core.registry import ARCHITECTURES
 
 
 def build(framework_adapter):
-    raise NotImplementedError("MobileNetV2 is not yet implemented.")
+    import torchvision
+
+    return torchvision.models.mobilenet_v2(weights=None, num_classes=10)
 
 
 ARCHITECTURES.register(
-    "MobileNetV2", implemented=False, family="CNN", framework="PyTorch"
+    "MobileNetV2", implemented=True, family="CNN", framework="PyTorch", input_shape=(3, 32, 32)
 )(build)

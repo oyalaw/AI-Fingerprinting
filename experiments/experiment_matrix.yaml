@@ -23,6 +23,28 @@ experiments:
     dataset: CIFAR10
     transport: TLS
 
+  # Verified directly: load/predict/serialize/deserialize, plus confirmed
+  # MobileNetV2 also runs correctly through the OpenVINO adapter
+  # unchanged -- these unlock real use across every already-implemented
+  # framework's generic PyTorch-conversion path, not just PyTorch.
+  - name: inference_pytorch_mobilenetv2_cifar10
+    paradigm: inference
+    framework: PyTorch
+    family: CNN
+    architecture: MobileNetV2
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+
+  - name: inference_pytorch_resnet50_cifar10
+    paradigm: inference
+    framework: PyTorch
+    family: CNN
+    architecture: ResNet50
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+
   - name: fl_flower_resnet18_cifar10
     paradigm: federated_learning
     fl_framework: Flower
