@@ -111,6 +111,21 @@ experiments:
     dataset: UCI HAR
     transport: TCP
 
+  # First Diffusion-family slice. "Inference" is a T=20-step reverse-
+  # diffusion loop, but it lives entirely inside the model's forward() --
+  # invisible to the framework adapter, one predict() call in/out over the
+  # same wire protocol as everything else. See architectures/ddpm.py's
+  # docstring. Verified no NaN/Inf across the full reverse process, plus a
+  # real client/server roundtrip.
+  - name: inference_pytorch_ddpm_synthetic
+    paradigm: inference
+    framework: PyTorch
+    family: Diffusion
+    architecture: DDPM
+    application: Image Generation
+    dataset: Synthetic
+    transport: TCP
+
   - name: fl_flower_resnet18_cifar10
     paradigm: federated_learning
     fl_framework: Flower
