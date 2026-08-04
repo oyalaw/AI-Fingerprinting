@@ -86,6 +86,31 @@ experiments:
     dataset: IMDB
     transport: TCP
 
+  # First RNN-family vertical slice. UCI HAR's real archive is a nested
+  # zip with 9 "Inertial Signals" channel files, 128-timestep windows --
+  # confirmed by inspection, see datasets/uci_har.py's docstring.
+  # families/rnn's shared transpose helper handles the (channels,
+  # timesteps) -> (timesteps, channels) conversion both LSTM and GRU
+  # reuse unchanged. Verified end-to-end for both including a real
+  # client/server roundtrip (LSTM).
+  - name: inference_pytorch_lstm_ucihar
+    paradigm: inference
+    framework: PyTorch
+    family: RNN
+    architecture: LSTM
+    application: Activity Recognition
+    dataset: UCI HAR
+    transport: TCP
+
+  - name: inference_pytorch_gru_ucihar
+    paradigm: inference
+    framework: PyTorch
+    family: RNN
+    architecture: GRU
+    application: Activity Recognition
+    dataset: UCI HAR
+    transport: TCP
+
   - name: fl_flower_resnet18_cifar10
     paradigm: federated_learning
     fl_framework: Flower
