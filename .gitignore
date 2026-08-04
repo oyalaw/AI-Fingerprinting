@@ -10,6 +10,10 @@ env/
 # Downloaded datasets (CIFAR10 etc. via torchvision)
 data/
 
+# Downloaded pretrained checkpoints (YOLOv8n via Ultralytics, etc.)
+*.pt
+*.pth
+
 # Per-experiment output: pcaps, sequences, ground truth, logs, dev TLS certs
 experiments/results/*/
 experiments/results/.dev_certs/

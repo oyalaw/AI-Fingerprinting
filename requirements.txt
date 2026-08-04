@@ -5,6 +5,11 @@ numpy
 torch
 torchvision
 
+# YOLOv8 object-detection vertical slice (also downloads yolov8n.pt, ~6MB,
+# on first use)
+ultralytics
+pillow
+
 # Federated learning vertical slice (Flower)
 flwr
 

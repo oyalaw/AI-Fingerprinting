@@ -239,6 +239,26 @@ experiments:
     transport: TCP
     device: macbook
 
+  # First non-ResNet18 vertical slice: YOLOv8 loaded via Ultralytics
+  # itself, returned as a plain nn.Module so the existing PyTorch adapter
+  # handles it unchanged. Verified end-to-end including a real
+  # client/server roundtrip; postprocess's NMS decode was cross-checked
+  # directly against Ultralytics' own high-level YOLO.predict() pipeline
+  # on the same image. `dataset: Synthetic` here (not COCO, which is
+  # still a stub) so this entry is actually runnable as written -- that's
+  # also exactly what was tested. cv_framework isn't wired into execution
+  # yet (see cv_frameworks/ultralytics_adapter.py) -- omitted here since
+  # setting it wouldn't currently change anything.
+  - name: inference_pytorch_yolov8_synthetic
+    paradigm: inference
+    framework: PyTorch
+    family: CNN
+    architecture: YOLOv8
+    application: Object Detection
+    dataset: Synthetic
+    transport: TCP
+    device: jetson_orin_nano
+
   # Written to onnx2tf's documented conversion API but NOT
   # execution-verified -- `tensorflow` has no wheel for this project's
   # Python version at all. Validates and lists fine either way; see
