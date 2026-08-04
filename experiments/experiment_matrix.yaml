@@ -58,6 +58,22 @@ experiments:
     dataset: CIFAR10
     transport: TCP
 
+  # First NLP vertical slice. input_ids/token_type_ids/attention_mask are
+  # stacked into one (3, 32) tensor to fit this project's one-tensor wire
+  # protocol -- see architectures/bert.py's docstring. IMDB is downloaded
+  # via the standard library, not HuggingFace's `datasets` pip package
+  # (name collision with this project's own datasets/ package -- see
+  # datasets/imdb.py's docstring). Verified end-to-end including a real
+  # client/server roundtrip.
+  - name: inference_pytorch_bert_imdb
+    paradigm: inference
+    framework: PyTorch
+    family: Transformer
+    architecture: BERT
+    application: Sentiment Analysis
+    dataset: IMDB
+    transport: TCP
+
   - name: fl_flower_resnet18_cifar10
     paradigm: federated_learning
     fl_framework: Flower

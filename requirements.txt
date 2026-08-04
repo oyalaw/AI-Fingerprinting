@@ -8,6 +8,15 @@ torchvision
 # YOLOv8 object-detection vertical slice (also downloads yolov8n.pt, ~6MB,
 # on first use)
 ultralytics
+
+# BERT/Sentiment Analysis/IMDB vertical slice. Only the tokenizer's fixed
+# vocabulary is downloaded, not pretrained model weights -- the model
+# itself is built from a random-init BertConfig. Deliberately NOT using
+# HuggingFace's `datasets` pip package for IMDB: its own top-level import
+# name collides with this project's own datasets/ package (confirmed
+# directly -- see datasets/imdb.py's docstring), so IMDB is downloaded and
+# parsed with the standard library instead.
+transformers
 pillow
 
 # Federated learning vertical slice (Flower)
