@@ -327,3 +327,19 @@ experiments:
     dataset: CIFAR10
     transport: TCP
     device: raspberry_pi_5
+
+  # NNAPI has no standalone Python binding -- real path is ONNX Runtime's
+  # own NNAPIExecutionProvider, compiled into onnxruntime-android/ORT
+  # Mobile, not the plain onnxruntime wheel this project depends on.
+  # Verified directly: get_available_providers() correctly excludes it
+  # here, and load_model() raises a clear error rather than letting ORT
+  # silently fall back to CPUExecutionProvider under an "NNAPI" label.
+  - name: inference_nnapi_resnet18_android
+    paradigm: inference
+    framework: NNAPI
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    device: samsung_galaxy

@@ -8,10 +8,10 @@ installed.
 Natively built with PyTorch, but `also_supports` every other implemented
 framework: TensorRT, OpenVINO, TensorFlow Lite, ONNX Runtime, ONNX Runtime
 Mobile, PyTorch Mobile, ExecuTorch, TVM, CoreML, TensorFlow, TensorFlow
-Lite Micro, MediaPipe, NCNN, SNPE, RKNN, Arm NN, DeepStream, and MNN all
-convert/compile this same PyTorch module into their own runtime format --
-the standard workflow for converter-based inference frameworks, since
-none of them define models itself. MPS Backend is different in kind: it's
+Lite Micro, MediaPipe, NCNN, SNPE, RKNN, Arm NN, DeepStream, MNN, and
+NNAPI all convert/compile this same PyTorch module into their own runtime
+format -- the standard workflow for converter-based inference frameworks,
+since none of them define models itself. MPS Backend is different in kind: it's
 PyTorch's own execution backend (`torch.device("mps")`), not a converter,
 so it reuses this exact module unconverted, just moved onto different
 hardware -- see frameworks/mps_backend_adapter.py. See also
@@ -53,6 +53,7 @@ ARCHITECTURES.register(
         "Arm NN",
         "DeepStream",
         "MNN",
+        "NNAPI",
     ],
     input_shape=(3, 32, 32),
 )(build)

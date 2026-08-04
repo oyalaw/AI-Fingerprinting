@@ -25,6 +25,7 @@ implemented end-to-end:
 - **Inference (not execution-verified here)**: TVM -> CNN -> ResNet18, same combo -- Apache's compiler-stack framework. `torch.jit.trace`s the module, imports it into TVM's Relay IR via `relay.frontend.from_pytorch`, compiles for `target="llvm"` (generic CPU codegen), and runs it through `tvm.contrib.graph_executor`. Also blocked by dependency availability, not hardware: `apache-tvm` has no prebuilt wheel here and tries to build its `apache-tvm-ffi` component from source via CMake, which fails with no C/C++ compiler toolchain configured on this machine -- installing one just to build this package was judged too invasive to do unprompted. Validates and lists fine; treat frameworks/tvm_adapter.py the same as executorch_adapter.py -- written-to-the-docs, not verified, and note TVM has been mid-transition from Relay IR (used here) to a newer Relax IR across recent releases.
 - **Inference (conversion verified, execution is macOS/iOS-only)**: CoreML -> CNN -> ResNet18, same combo -- `torch.jit.trace`s the module and converts it via `coremltools.convert(..., convert_to="neuralnetwork")` (the older but still-supported CoreML format; the modern `"mlprogram"` default needs a native blob-writer extension coremltools only ships for macOS, confirmed here: it fails even to *convert* with `RuntimeError: BlobWriter not loaded`). Conversion verified end-to-end on this Windows machine; running the converted model was then tried and confirmed to fail with coremltools' own real error, `Model prediction is only supported on macOS version 10.13 or later` -- not a gap in this adapter, structurally the same situation as TensorRT needing an NVIDIA GPU.
 - **Inference (Apple Silicon only)**: MPS Backend -> CNN -> ResNet18, same combo -- Apple's Metal Performance Shaders backend for PyTorch (`torch.device("mps")`), not a separate package: unlike every converter framework above, it's PyTorch's own execution backend, so this adapter just moves the unconverted PyTorch module onto `mps` instead of `cpu`/`cuda`. `torch.backends.mps.is_available()` is checked at `.build()` time rather than letting an op fail deep inside `predict`; verified directly on this Windows machine, where `is_built()`/`is_available()` both correctly report `False` (Windows/Linux torch builds don't compile the Metal backend in), and the adapter raises a clear error immediately instead of silently falling back to CPU, which would defeat the point of a device-specific label.
+- **Inference (Android only)**: NNAPI -> CNN -> ResNet18, same combo -- NNAPI has no standalone Python binding; the real documented path is ONNX Runtime's own `NNAPIExecutionProvider` (same ONNX export step the ONNX Runtime adapter uses), compiled into `onnxruntime-android`/ORT Mobile builds, not the plain `onnxruntime` wheel this project depends on. ORT's `providers=[...]` is a *priority* list -- if the first provider isn't compiled in, ORT silently falls back to the next one rather than erroring, so naively requesting NNAPI here would silently run on CPU while still labeling the traffic "NNAPI". This adapter checks `"NNAPIExecutionProvider" in onnxruntime.get_available_providers()` itself and raises a clear error instead of trusting that silent fallback -- verified directly here: it correctly reports unavailable and fails at `load_model()` before attempting anything, the same "check before silently degrading" pattern as MPS Backend.
 
 Written to each framework's documented API but **not execution-verified** in this environment (same disclosure as ExecuTorch/TVM above -- every one of these was checked against real pip/wheel availability first, and landed here specifically because that check failed):
 
@@ -99,14 +100,17 @@ python main.py --config config.yaml --role client --worker-rank 1
 ```
 
 **OpenVINO, TensorRT, TensorFlow Lite, ONNX Runtime, ONNX Runtime Mobile,
-PyTorch Mobile, ExecuTorch, TVM, or CoreML inference** (set `framework:`
-to `OpenVINO`, `TensorRT`, `TensorFlow Lite`, `ONNX Runtime`,
-`ONNX Runtime Mobile`, `PyTorch Mobile`, `ExecuTorch`, `TVM`, or `CoreML`
-in the config, everything else stays the same as the PyTorch inference
-example -- all but TensorRT/CoreML run on any machine; TensorRT needs an
-NVIDIA/Jetson GPU and CoreML needs macOS/iOS to actually run (conversion
-works anywhere); ExecuTorch and TVM additionally need a Python/toolchain
-their respective packages can actually build/install with):
+PyTorch Mobile, ExecuTorch, TVM, CoreML, MPS Backend, or NNAPI inference**
+(set `framework:` to `OpenVINO`, `TensorRT`, `TensorFlow Lite`,
+`ONNX Runtime`, `ONNX Runtime Mobile`, `PyTorch Mobile`, `ExecuTorch`,
+`TVM`, `CoreML`, `MPS Backend`, or `NNAPI` in the config, everything else
+stays the same as the PyTorch inference example -- all but
+TensorRT/CoreML/MPS Backend/NNAPI run on any machine; TensorRT needs an
+NVIDIA/Jetson GPU, CoreML/MPS Backend need macOS (CoreML conversion works
+anywhere, only execution is macOS/iOS-only), and NNAPI needs an
+onnxruntime-android build; ExecuTorch and TVM additionally need a
+Python/toolchain their respective packages can actually build/install
+with):
 
 ```bash
 python main.py --config config.yaml --role server
