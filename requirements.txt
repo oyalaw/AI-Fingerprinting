@@ -8,6 +8,11 @@ torchvision
 # Federated learning vertical slice (Flower)
 flwr
 
+# FedLab: installs and connects cleanly, but the client/server pair hangs
+# after connecting -- see frameworks/fedlab_adapter.py's docstring before
+# relying on it.
+fedlab
+
 # Packet capture (requires Npcap on Windows / libpcap on Linux & macOS,
 # plus admin/root privileges to actually capture -- see README.md)
 scapy

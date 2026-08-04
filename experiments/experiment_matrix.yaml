@@ -35,6 +35,23 @@ experiments:
     num_clients: 2
     num_rounds: 3
 
+  # Real torch.distributed gloo/TCP rendezvous verified working in
+  # isolation on this machine; the client/server pair hangs indefinitely
+  # right after connecting, inside FedLab's own post-connect handshake --
+  # see frameworks/fedlab_adapter.py's docstring for exactly what was
+  # isolated and what remains unresolved.
+  - name: fl_fedlab_resnet18_cifar10
+    paradigm: federated_learning
+    fl_framework: FedLab
+    framework: PyTorch
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: CIFAR10
+    transport: TCP
+    num_clients: 1
+    num_rounds: 1
+
   - name: distributed_ddp_resnet18_cifar10
     paradigm: distributed_training
     distributed_framework: DistributedDataParallel
