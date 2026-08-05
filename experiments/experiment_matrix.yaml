@@ -520,3 +520,20 @@ experiments:
     dataset: CIFAR10
     transport: TCP
     device: samsung_galaxy
+
+  # Completes the family axis (6/6). Both architecture and application are
+  # new additions, not existing stubs -- the original taxonomy paired only
+  # 5 of its 6 families with an architecture, and none of the 8 original
+  # applications fit an autoencoder's actual task. Small conv encoder/
+  # decoder, Sigmoid output kept in [0,1] via families/autoencoder's own
+  # scaling helper (not families/cnn's ImageNet normalization). Verified
+  # end-to-end with real CIFAR10 images, plus a real client/server
+  # roundtrip with correct ground truth.
+  - name: inference_pytorch_autoencoder_cifar10
+    paradigm: inference
+    framework: PyTorch
+    family: Autoencoder
+    architecture: Autoencoder
+    application: Image Reconstruction
+    dataset: CIFAR10
+    transport: TCP
