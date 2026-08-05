@@ -2,21 +2,18 @@
 equivalent to architectures/gcn.py's hand-rolled one, built with
 `torch_geometric.nn.GCNConv` instead of raw `adjacency @ (features @ W)`.
 
-**Honest disclosure on wiring**: this is NOT currently reachable by setting
-`graph_framework: PyTorch Geometric` in a config. `architecture_entry.build()`
-(the call every architecture module implements, see architectures/gcn.py)
-only ever receives the selected `framework_adapter` -- never the full
-`ExperimentConfig` -- so there's no way for GCN's build() to see which
-graph_framework was selected and branch on it. Making that real would mean
-threading `config` through `FrameworkAdapter.load_model()` and every
-`architecture_entry.build()` call site across all 12 currently-implemented
-framework adapters and all 13 architectures -- a real, separate refactor,
-not something to fold in unprompted alongside one adapter. `core/config.py`
-already validates `graph_framework` against this registry; this file makes
-that validated value point at something real for the first time, rather
-than adding a 4th framework that's equally disconnected from execution --
-but "validated" and "actually used" remain two different things until that
-refactor happens.
+**Wired into execution**: setting `graph_framework: PyTorch Geometric` in a
+config now genuinely changes what runs. `ExperimentConfig` is threaded
+through `FrameworkAdapter.load_model()` and every `architecture_entry.
+build()` call site (all 22 framework adapters, all 13 architectures --
+see roles/server.py, roles/standalone.py, and the fl_frameworks/
+distributed_frameworks adapters that also build models); architectures/
+gcn.py's build() checks `config.graph_framework` and, when it names this
+entry, calls `PyTorchGeometricAdapter.build_gcn()` below instead of its
+own hand-rolled classifier. Verified directly: a real client/server
+roundtrip with `graph_framework: PyTorch Geometric` set produces correct
+predictions and correct ground truth (the `graph_framework` sub-label is
+now what actually ran, not just what was recorded).
 
 **The math, done correctly, not just running without erroring**: GCN's
 input is `datasets/karate_club.py`'s (2, 34, 34) stack, channel 0 already
@@ -66,8 +63,10 @@ class _PyGGCNClassifier(torch.nn.Module):
 
 class PyTorchGeometricAdapter:
     """Not a FrameworkAdapter (frameworks/base.py) -- graph_frameworks/ has
-    no base.py of its own yet, since nothing in roles/client.py or
-    roles/server.py consults this registry (see module docstring)."""
+    no base.py of its own yet. Consulted directly by architectures/gcn.py's
+    build() (see module docstring), not through roles/client.py or
+    roles/server.py, which only ever see the FrameworkAdapter/architecture
+    pair GCN's build() ultimately returns."""
 
     def build_gcn(self, num_nodes=34, hidden_dim=16, num_classes=2):
         return _PyGGCNClassifier(num_nodes, hidden_dim, num_classes)

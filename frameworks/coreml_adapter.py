@@ -50,11 +50,11 @@ class CoreMLAdapter(FrameworkAdapter):
     def __init__(self):
         import coremltools  # noqa: F401 -- fail fast here if not installed
 
-    def load_model(self, architecture_entry):
+    def load_model(self, architecture_entry, config):
         import coremltools as ct
         import torch
 
-        torch_model = architecture_entry.build(self)
+        torch_model = architecture_entry.build(self, config)
         torch_model.eval()
 
         input_shape = architecture_entry.meta.get("input_shape", (3, 224, 224))

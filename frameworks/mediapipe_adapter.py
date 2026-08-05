@@ -80,7 +80,7 @@ class MediaPipeAdapter(FrameworkAdapter):
 
         self._convert = _load_tflite_converter()
 
-    def load_model(self, architecture_entry):
+    def load_model(self, architecture_entry, config):
         import torch
         from mediapipe.tasks.python import vision
         from mediapipe.tasks.python.core.base_options import BaseOptions
@@ -89,7 +89,7 @@ class MediaPipeAdapter(FrameworkAdapter):
         )
         from mediapipe.tasks.python.metadata.metadata_writers import writer_utils
 
-        torch_model = architecture_entry.build(self)
+        torch_model = architecture_entry.build(self, config)
         torch_model.eval()
 
         input_shape = architecture_entry.meta.get("input_shape", (3, 224, 224))

@@ -72,11 +72,11 @@ class TensorFlowLiteMicroAdapter(FrameworkAdapter):
 
         self._convert = _load_tflite_converter()
 
-    def load_model(self, architecture_entry):
+    def load_model(self, architecture_entry, config):
         import torch
         from tflite_micro.python.tflite_micro import runtime
 
-        torch_model = architecture_entry.build(self)
+        torch_model = architecture_entry.build(self, config)
         torch_model.eval()
 
         input_shape = architecture_entry.meta.get("input_shape", (3, 224, 224))

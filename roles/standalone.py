@@ -10,7 +10,7 @@ class StandaloneRole(Role):
     def run(self):
         framework = FRAMEWORKS.get(self.config.framework).build()
         architecture_entry = ARCHITECTURES.get(self.config.architecture)
-        model = framework.load_model(architecture_entry)
+        model = framework.load_model(architecture_entry, self.config)
         application = APPLICATIONS.get(self.config.application).build()
         dataset = DATASETS.get(self.config.dataset).build()
 

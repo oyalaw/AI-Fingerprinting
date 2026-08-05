@@ -53,7 +53,7 @@ from fl_frameworks.base import FLFrameworkAdapter
 def _build_model(config):
     framework = FRAMEWORKS.get(config.framework).build()
     architecture_entry = ARCHITECTURES.get(config.architecture)
-    return framework.load_model(architecture_entry)
+    return framework.load_model(architecture_entry, config)
 
 
 class _ClientPartitionedCIFAR10:

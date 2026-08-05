@@ -48,8 +48,8 @@ class MPSBackendAdapter(FrameworkAdapter):
             )
         self.device = torch.device("mps")
 
-    def load_model(self, architecture_entry):
-        model = architecture_entry.build(self)
+    def load_model(self, architecture_entry, config):
+        model = architecture_entry.build(self, config)
         model.to(self.device)
         model.eval()
         return model

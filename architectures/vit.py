@@ -26,7 +26,7 @@ architecture's sake without re-verifying the rest.
 from core.registry import ARCHITECTURES
 
 
-def build(framework_adapter):
+def build(framework_adapter, config):
     import torchvision
 
     return torchvision.models.vit_b_16(weights=None, num_classes=10, image_size=32)

@@ -38,11 +38,11 @@ class _BertWrapper(torch.nn.Module):
         return output.logits
 
 
-def build(framework_adapter):
+def build(framework_adapter, config):
     from transformers import AutoTokenizer, BertConfig, BertForSequenceClassification
 
     tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
-    config = BertConfig(
+    model_config = BertConfig(
         vocab_size=tokenizer.vocab_size,
         hidden_size=64,
         num_hidden_layers=2,
@@ -50,7 +50,7 @@ def build(framework_adapter):
         intermediate_size=128,
         num_labels=2,
     )
-    bert_model = BertForSequenceClassification(config)
+    bert_model = BertForSequenceClassification(model_config)
     return _BertWrapper(bert_model)
 
 

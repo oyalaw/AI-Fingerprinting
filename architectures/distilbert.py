@@ -30,11 +30,11 @@ class _DistilBertWrapper(torch.nn.Module):
         return output.logits
 
 
-def build(framework_adapter):
+def build(framework_adapter, config):
     from transformers import AutoTokenizer, DistilBertConfig, DistilBertForSequenceClassification
 
     tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
-    config = DistilBertConfig(
+    model_config = DistilBertConfig(
         vocab_size=tokenizer.vocab_size,
         dim=64,
         n_layers=2,
@@ -42,7 +42,7 @@ def build(framework_adapter):
         hidden_dim=128,
         num_labels=2,
     )
-    distilbert_model = DistilBertForSequenceClassification(config)
+    distilbert_model = DistilBertForSequenceClassification(model_config)
     return _DistilBertWrapper(distilbert_model)
 
 

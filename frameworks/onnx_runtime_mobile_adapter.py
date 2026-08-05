@@ -54,14 +54,14 @@ class ONNXRuntimeMobileAdapter(FrameworkAdapter):
 
         self._onnxruntime = onnxruntime
 
-    def load_model(self, architecture_entry):
+    def load_model(self, architecture_entry, config):
         import torch
         from onnxruntime.tools.convert_onnx_models_to_ort import (
             OptimizationStyle,
             convert_onnx_models_to_ort,
         )
 
-        torch_model = architecture_entry.build(self)
+        torch_model = architecture_entry.build(self, config)
         torch_model.eval()
 
         input_shape = architecture_entry.meta.get("input_shape", (3, 224, 224))

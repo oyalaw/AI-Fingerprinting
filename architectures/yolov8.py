@@ -35,7 +35,7 @@ class _YOLOv8Wrapper(torch.nn.Module):
         return output[0] if isinstance(output, (tuple, list)) else output
 
 
-def build(framework_adapter):
+def build(framework_adapter, config):
     from ultralytics import YOLO
 
     yolo = YOLO("yolov8n.pt")

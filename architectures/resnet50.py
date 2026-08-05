@@ -6,7 +6,7 @@ architecture doesn't require it installed.
 from core.registry import ARCHITECTURES
 
 
-def build(framework_adapter):
+def build(framework_adapter, config):
     import torchvision
 
     return torchvision.models.resnet50(weights=None, num_classes=10)

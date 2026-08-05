@@ -43,7 +43,7 @@ class _YOLOv8SegWrapper(torch.nn.Module):
         return torch.cat([detections.flatten(), mask_prototypes.flatten()]).unsqueeze(0)
 
 
-def build(framework_adapter):
+def build(framework_adapter, config):
     from ultralytics import YOLO
 
     yolo = YOLO("yolov8n-seg.pt")

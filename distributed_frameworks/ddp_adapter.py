@@ -52,7 +52,7 @@ def _train(config, logger, event_log, rank):
     try:
         framework = FRAMEWORKS.get(config.framework).build()
         architecture_entry = ARCHITECTURES.get(config.architecture)
-        model = architecture_entry.build(framework)
+        model = architecture_entry.build(framework, config)
         ddp_model = DistributedDataParallel(model)
 
         loader = _build_loader(config)

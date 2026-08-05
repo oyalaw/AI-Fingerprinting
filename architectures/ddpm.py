@@ -16,6 +16,12 @@ this fit the existing single-request/response inference paradigm without
 any change to core/roles code -- diffusion model SAMPLING (as opposed to
 training) genuinely is request/response shaped: give it noise, get back
 an image.
+
+Default build is this hand-rolled sampler; when `diffusion_framework:
+Diffusers` is set in the config, build() dispatches to
+diffusion_frameworks/diffusers_adapter.py's real UNet2DModel/DDPMScheduler-
+based sampler instead -- see that module's docstring for the real bug
+(norm_num_groups) found and fixed while verifying it.
 """
 import torch
 
@@ -79,7 +85,18 @@ class _DDPMSampler(torch.nn.Module):
         return x
 
 
-def build(framework_adapter):
+def build(framework_adapter, config):
+    diffusion_framework = getattr(config, "diffusion_framework", None)
+    if diffusion_framework:
+        from core.registry import DIFFUSION_FRAMEWORKS
+
+        adapter = DIFFUSION_FRAMEWORKS.get(diffusion_framework).build()
+        if not hasattr(adapter, "build_ddpm"):
+            raise RuntimeError(
+                f"diffusion_framework '{diffusion_framework}' has no DDPM "
+                f"implementation to dispatch to (see architectures/ddpm.py)."
+            )
+        return adapter.build_ddpm()
     return _DDPMSampler()
 
 

@@ -24,7 +24,7 @@ class ServerRole(Role):
     def _run_inference(self):
         framework = FRAMEWORKS.get(self.config.framework).build()
         architecture_entry = ARCHITECTURES.get(self.config.architecture)
-        model = framework.load_model(architecture_entry)
+        model = framework.load_model(architecture_entry, self.config)
 
         transport = TRANSPORTS.get(self.config.transport).build(
             self.config.host,

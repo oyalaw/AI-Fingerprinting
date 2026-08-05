@@ -83,10 +83,10 @@ class TensorFlowLiteAdapter(FrameworkAdapter):
         self._convert = _load_converter()
         self._interpreter_cls = _load_interpreter_cls()
 
-    def load_model(self, architecture_entry):
+    def load_model(self, architecture_entry, config):
         import torch
 
-        torch_model = architecture_entry.build(self)
+        torch_model = architecture_entry.build(self, config)
         torch_model.eval()
 
         input_shape = architecture_entry.meta.get("input_shape", (3, 224, 224))

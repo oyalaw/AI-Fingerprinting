@@ -75,10 +75,10 @@ class DeepStreamAdapter(FrameworkAdapter):
         Gst.init(None)
         self._Gst = Gst
 
-    def load_model(self, architecture_entry):
+    def load_model(self, architecture_entry, config):
         import torch
 
-        torch_model = architecture_entry.build(self)
+        torch_model = architecture_entry.build(self, config)
         torch_model.eval()
 
         input_shape = architecture_entry.meta.get("input_shape", (3, 224, 224))

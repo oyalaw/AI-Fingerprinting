@@ -1,11 +1,11 @@
-"""GCN -- first and only GNN-family architecture, hand-rolled (Kipf &
-Welling, 2017) two-layer propagation rather than a torch_geometric/DGL
-dependency: `graph_frameworks/pytorch_geometric_adapter.py` etc. remain
-stubs (their own pip wheels carry real platform-specific install risk,
-the same category of problem TensorFlow's Python-version wheel gap hit
-elsewhere in this project) -- a GCN layer is simple enough
-(`adjacency @ (features @ W)`) to implement directly in plain PyTorch,
-avoiding that risk entirely for this one architecture.
+"""GCN -- first GNN-family architecture. Default build is a hand-rolled
+(Kipf & Welling, 2017) two-layer propagation in plain PyTorch
+(`adjacency @ (features @ W)`); when `graph_framework: PyTorch Geometric`
+is set in the config, build() now dispatches to
+graph_frameworks/pytorch_geometric_adapter.py's real GCNConv-based
+classifier instead -- see that module's docstring for how its math was
+verified equivalent to the hand-rolled version, not just "also produces
+the right shape."
 
 Random init, small (hidden_dim=16) -- consistent with every other
 architecture here. Input: the (2, 34, 34) stacked tensor
@@ -36,7 +36,20 @@ class _GCNClassifier(torch.nn.Module):
         return h2
 
 
-def build(framework_adapter):
+def build(framework_adapter, config):
+    graph_framework = getattr(config, "graph_framework", None)
+    if graph_framework:
+        from core.registry import GRAPH_FRAMEWORKS
+
+        # entry.build() itself raises the standard NotImplementedError for
+        # a stub graph_framework -- no special-casing needed here for that.
+        adapter = GRAPH_FRAMEWORKS.get(graph_framework).build()
+        if not hasattr(adapter, "build_gcn"):
+            raise RuntimeError(
+                f"graph_framework '{graph_framework}' has no GCN implementation "
+                f"to dispatch to (see architectures/gcn.py)."
+            )
+        return adapter.build_gcn()
     return _GCNClassifier()
 
 

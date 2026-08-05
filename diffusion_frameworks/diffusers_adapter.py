@@ -3,18 +3,12 @@ to architectures/ddpm.py's hand-rolled one, built with HuggingFace's real
 `UNet2DModel` + `DDPMScheduler` instead of a hand-written noise-prediction
 CNN and manually-coded reverse-sampling formula.
 
-**Honest disclosure on wiring**: exactly the same situation as
-graph_frameworks/pytorch_geometric_adapter.py -- this is NOT currently
-reachable by setting `diffusion_framework: Diffusers` in a config.
-`architecture_entry.build()` only ever receives the selected framework
-adapter, never the full `ExperimentConfig`, so there's no branch point for
-architectures/ddpm.py to consult which diffusion_framework was selected.
-Making that real means threading `config` through `FrameworkAdapter.
-load_model()` and every architecture's `build()` across every implemented
-framework adapter and architecture -- a real, separate refactor, not
-folded in unprompted alongside one adapter. `core/config.py` already
-validates `diffusion_framework` against this registry; this file makes
-that validated value point at something real for the first time.
+**Wired into execution**: exactly the same situation as
+graph_frameworks/pytorch_geometric_adapter.py -- setting
+`diffusion_framework: Diffusers` in a config now genuinely changes what
+runs. architectures/ddpm.py's build() checks `config.diffusion_framework`
+and, when it names this entry, calls `DiffusersAdapter.build_ddpm()`
+below instead of its own hand-rolled sampler.
 
 **A real bug found and fixed while verifying this, not just code that
 happens to run**: `UNet2DModel`'s default `norm_num_groups=32` doesn't
@@ -71,8 +65,10 @@ class _DiffusersDDPMSampler(torch.nn.Module):
 
 class DiffusersAdapter:
     """Not a FrameworkAdapter (frameworks/base.py) -- diffusion_frameworks/
-    has no base.py of its own yet, since nothing in roles/client.py or
-    roles/server.py consults this registry (see module docstring)."""
+    has no base.py of its own yet. Consulted directly by architectures/
+    ddpm.py's build() (see module docstring), not through roles/client.py
+    or roles/server.py, which only ever see the FrameworkAdapter/
+    architecture pair DDPM's build() ultimately returns."""
 
     def build_ddpm(self, num_timesteps=_NUM_TIMESTEPS):
         return _DiffusersDDPMSampler(num_timesteps)

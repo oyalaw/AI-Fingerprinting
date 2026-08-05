@@ -37,7 +37,7 @@ class _AutoencoderModel(torch.nn.Module):
         return self.decoder(self.encoder(x))
 
 
-def build(framework_adapter):
+def build(framework_adapter, config):
     return _AutoencoderModel()
 
 

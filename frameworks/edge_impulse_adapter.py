@@ -52,7 +52,7 @@ class EdgeImpulseAdapter(FrameworkAdapter):
     def __init__(self):
         import edge_impulse_linux  # noqa: F401 -- fail fast here if not installed
 
-    def load_model(self, architecture_entry):
+    def load_model(self, architecture_entry, config):
         eim_path = architecture_entry.meta.get("edge_impulse_eim_path")
         if not eim_path:
             raise RuntimeError(

@@ -75,7 +75,7 @@ def _train(config, logger, event_log, rank):
     try:
         framework = FRAMEWORKS.get(config.framework).build()
         architecture_entry = ARCHITECTURES.get(config.architecture)
-        model = architecture_entry.build(framework)
+        model = architecture_entry.build(framework, config)
 
         optimizer = OSS(model.parameters(), optim=torch.optim.SGD, lr=0.01)
         sharded_model = ShardedDataParallel(model, sharded_optimizer=optimizer)

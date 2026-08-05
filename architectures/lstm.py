@@ -27,7 +27,7 @@ class _LSTMClassifier(torch.nn.Module):
         return self.classifier(hidden[-1])
 
 
-def build(framework_adapter):
+def build(framework_adapter, config):
     return _LSTMClassifier()
 
 

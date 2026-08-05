@@ -56,13 +56,13 @@ class TVMAdapter(FrameworkAdapter):
     def __init__(self):
         import tvm  # noqa: F401 -- fail fast here if not installed
 
-    def load_model(self, architecture_entry):
+    def load_model(self, architecture_entry, config):
         import tvm
         import torch
         from tvm import relay
         from tvm.contrib import graph_executor
 
-        torch_model = architecture_entry.build(self)
+        torch_model = architecture_entry.build(self, config)
         torch_model.eval()
 
         input_shape = architecture_entry.meta.get("input_shape", (3, 224, 224))

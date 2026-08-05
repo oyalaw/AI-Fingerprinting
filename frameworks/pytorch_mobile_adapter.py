@@ -47,12 +47,12 @@ class PyTorchMobileAdapter(FrameworkAdapter):
     def __init__(self):
         import torch  # noqa: F401 -- fail fast here if not installed
 
-    def load_model(self, architecture_entry):
+    def load_model(self, architecture_entry, config):
         import torch
         from torch.jit.mobile import _load_for_lite_interpreter
         from torch.utils.mobile_optimizer import optimize_for_mobile
 
-        torch_model = architecture_entry.build(self)
+        torch_model = architecture_entry.build(self, config)
         torch_model.eval()
 
         input_shape = architecture_entry.meta.get("input_shape", (3, 224, 224))

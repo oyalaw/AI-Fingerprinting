@@ -60,7 +60,7 @@ class NNAPIAdapter(FrameworkAdapter):
 
         self._onnxruntime = onnxruntime
 
-    def load_model(self, architecture_entry):
+    def load_model(self, architecture_entry, config):
         import torch
 
         available = self._onnxruntime.get_available_providers()
@@ -74,7 +74,7 @@ class NNAPIAdapter(FrameworkAdapter):
                 "any non-Android machine -- see this module's docstring."
             )
 
-        torch_model = architecture_entry.build(self)
+        torch_model = architecture_entry.build(self, config)
         torch_model.eval()
 
         input_shape = architecture_entry.meta.get("input_shape", (3, 224, 224))

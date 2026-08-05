@@ -32,7 +32,7 @@ ARCHITECTURE_TEMPLATE = '''"""{display_name} -- registered but not yet implement
 from core.registry import ARCHITECTURES
 
 
-def build(framework_adapter):
+def build(framework_adapter, config):
     raise NotImplementedError("{display_name} is not yet implemented.")
 
 
