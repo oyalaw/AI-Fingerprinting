@@ -362,6 +362,24 @@ experiments:
     transport: TCP
     device: jetson_orin_nano
 
+  # YOLOv8-Seg is a new architecture beyond the original 13 -- Ultralytics'
+  # segmentation checkpoint is a genuinely different head/output shape
+  # from plain YOLOv8. Two structurally different output tensors
+  # (detections + mask prototypes) are flattened/concatenated at a fixed
+  # split point to fit this project's one-tensor wire protocol -- see
+  # architectures/yolov8_seg.py's docstring. postprocess cross-checked
+  # directly against Ultralytics' own YOLO.predict() on a real test image.
+  # Verified end-to-end through the PyTorch adapter.
+  - name: inference_pytorch_yolov8seg_synthetic
+    paradigm: inference
+    framework: PyTorch
+    family: CNN
+    architecture: YOLOv8-Seg
+    application: Segmentation
+    dataset: Synthetic
+    transport: TCP
+    device: jetson_orin_nano
+
   # Written to onnx2tf's documented conversion API but NOT
   # execution-verified -- `tensorflow` has no wheel for this project's
   # Python version at all. Validates and lists fine either way; see
