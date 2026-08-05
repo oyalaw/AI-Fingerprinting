@@ -100,6 +100,23 @@ experiments:
     dataset: IMDB
     transport: TCP
 
+  # New architecture beyond the original 13, same gap-fill precedent as
+  # Autoencoder/YOLOv8-Seg. Whisper's real inference is autoregressive
+  # generation, run inside _WhisperWrapper.forward() -- see
+  # architectures/whisper.py's docstring. speech_framework: Whisper is
+  # validated but doesn't change behavior (architectures/whisper.py's
+  # default already IS the real implementation) -- see
+  # speech_frameworks/whisper_adapter.py. Verified end-to-end including a
+  # real client/server roundtrip.
+  - name: inference_pytorch_whisper_synthetic
+    paradigm: inference
+    framework: PyTorch
+    family: Transformer
+    architecture: Whisper
+    application: Speech Recognition
+    dataset: Synthetic
+    transport: TCP
+
   # First RNN-family vertical slice. UCI HAR's real archive is a nested
   # zip with 9 "Inertial Signals" channel files, 128-timestep windows --
   # confirmed by inspection, see datasets/uci_har.py's docstring.
