@@ -23,6 +23,20 @@ experiments:
     dataset: CIFAR10
     transport: TLS
 
+  # HTTP transport: plain http.server/http.client, standard library only.
+  # Verified end-to-end including a real client/server roundtrip -- see
+  # transport/http.py's docstring for how its queue-based bridge adapts
+  # this project's synchronous send()/recv() interface onto HTTP's
+  # request/response model.
+  - name: inference_pytorch_resnet18_synthetic_http
+    paradigm: inference
+    framework: PyTorch
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: Synthetic
+    transport: HTTP
+
   # Verified directly: load/predict/serialize/deserialize, plus confirmed
   # MobileNetV2 also runs correctly through the OpenVINO adapter
   # unchanged -- these unlock real use across every already-implemented
