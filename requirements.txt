@@ -100,6 +100,17 @@ apache-tvm
 # same shape as TensorRT needing an NVIDIA GPU.
 coremltools
 
+# Karate Club dataset (GCN/Node Classification vertical slice) -- loads
+# the real graph via networkx.karate_club_graph().
+networkx
+
+# PyTorch Geometric: real, verified GCNConv-based GCN, equivalent to
+# architectures/gcn.py's hand-rolled version -- see
+# graph_frameworks/pytorch_geometric_adapter.py's docstring, including the
+# honest disclosure that graph_framework isn't actually wired into
+# execution yet. Pure-Python wheel, no platform-specific build.
+torch_geometric
+
 # --- Everything below is written to its framework's documented API but
 # NOT execution-verified in this project's environment -- each one was
 # checked against real pip/wheel availability first and landed here
