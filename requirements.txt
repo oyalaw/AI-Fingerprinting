@@ -111,6 +111,13 @@ networkx
 # execution yet. Pure-Python wheel, no platform-specific build.
 torch_geometric
 
+# Diffusers: real, verified UNet2DModel/DDPMScheduler-based DDPM sampler,
+# equivalent to architectures/ddpm.py's hand-rolled one -- see
+# diffusion_frameworks/diffusers_adapter.py's docstring, same honest
+# disclosure as PyTorch Geometric above (diffusion_framework isn't wired
+# into execution yet). Pure-Python wheel.
+diffusers
+
 # --- Everything below is written to its framework's documented API but
 # NOT execution-verified in this project's environment -- each one was
 # checked against real pip/wheel availability first and landed here
