@@ -117,6 +117,25 @@ experiments:
     dataset: Synthetic
     transport: TCP
 
+  # Last application/architecture gap, and what llm_framework was added
+  # for. Same autoregressive-generation-inside-forward() pattern as
+  # Whisper -- see architectures/gpt2.py's docstring. Unlike Image
+  # Generation/Speech Recognition, real IMDB text is a meaningful
+  # generation prompt, so it's reused directly rather than synthesized.
+  # llm_framework: HuggingFace Transformers is validated but doesn't
+  # change behavior (architectures/gpt2.py's default already IS the real
+  # implementation) -- see llm_frameworks/huggingface_transformers_adapter.py.
+  # Verified end-to-end including a real client/server roundtrip with
+  # real IMDB prompts.
+  - name: inference_pytorch_gpt2_imdb
+    paradigm: inference
+    framework: PyTorch
+    family: Transformer
+    architecture: GPT-2
+    application: Text Generation
+    dataset: IMDB
+    transport: TCP
+
   # First RNN-family vertical slice. UCI HAR's real archive is a nested
   # zip with 9 "Inertial Signals" channel files, 128-timestep windows --
   # confirmed by inspection, see datasets/uci_har.py's docstring.
