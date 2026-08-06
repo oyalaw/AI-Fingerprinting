@@ -412,11 +412,9 @@ experiments:
   # handles it unchanged. Verified end-to-end including a real
   # client/server roundtrip; postprocess's NMS decode was cross-checked
   # directly against Ultralytics' own high-level YOLO.predict() pipeline
-  # on the same image. `dataset: Synthetic` here (not COCO, which is
-  # still a stub) so this entry is actually runnable as written -- that's
-  # also exactly what was tested. cv_framework isn't wired into execution
-  # yet (see cv_frameworks/ultralytics_adapter.py) -- omitted here since
-  # setting it wouldn't currently change anything.
+  # on the same image. `dataset: Synthetic` here for a lightweight smoke
+  # test with no image download -- see the COCO entry below for the real
+  # dataset pairing.
   - name: inference_pytorch_yolov8_synthetic
     paradigm: inference
     framework: PyTorch
@@ -424,6 +422,25 @@ experiments:
     architecture: YOLOv8
     application: Object Detection
     dataset: Synthetic
+    transport: TCP
+    device: jetson_orin_nano
+
+  # Same YOLOv8/Object Detection combo against the real COCO 2017 val
+  # split -- see datasets/coco.py's docstring for how it avoids COCO's
+  # two impractically large bulk downloads (annotations JSON extracted
+  # from the 252MB zip; images fetched lazily one at a time via each
+  # image's own coco_url). Unlike this project's random-init
+  # architectures, YOLOv8 uses real pretrained weights, so this one's
+  # detections are genuinely meaningful -- verified end-to-end including
+  # a real client/server roundtrip, true label present among actual
+  # detections in both test images.
+  - name: inference_pytorch_yolov8_coco
+    paradigm: inference
+    framework: PyTorch
+    family: CNN
+    architecture: YOLOv8
+    application: Object Detection
+    dataset: COCO
     transport: TCP
     device: jetson_orin_nano
 
