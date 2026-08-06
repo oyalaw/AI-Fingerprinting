@@ -444,6 +444,26 @@ experiments:
     transport: TCP
     device: jetson_orin_nano
 
+  # Last dataset stub. Streams the official 6.3GB val tar via tarfile's
+  # streaming mode rather than downloading it, stopping once enough
+  # images are collected -- confirmed directly this only transfers the
+  # kept images' bytes. Real finding from testing: the tar's physical
+  # entry order is class-grouped (50 images/class), so a literal
+  # first-N read returned the same label 15/15 times; fixed by keeping
+  # only every 97th qualifying entry, confirmed to produce 15/15 unique
+  # labels -- see datasets/imagenet.py's docstring. Ground truth comes
+  # from the small official devkit (meta.mat + ground_truth.txt),
+  # downloaded and cached in full. Verified end-to-end including a real
+  # client/server roundtrip.
+  - name: inference_pytorch_resnet18_imagenet
+    paradigm: inference
+    framework: PyTorch
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: ImageNet
+    transport: TCP
+
   # YOLOv8-Seg is a new architecture beyond the original 13 -- Ultralytics'
   # segmentation checkpoint is a genuinely different head/output shape
   # from plain YOLOv8. Two structurally different output tensors

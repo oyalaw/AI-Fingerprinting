@@ -9,6 +9,10 @@ torchvision
 # on first use)
 ultralytics
 
+# ImageNet dataset: parses the devkit's meta.mat for the class ID -> name
+# mapping
+scipy
+
 # BERT/Sentiment Analysis/IMDB vertical slice. Only the tokenizer's fixed
 # vocabulary is downloaded, not pretrained model weights -- the model
 # itself is built from a random-init BertConfig. Deliberately NOT using
