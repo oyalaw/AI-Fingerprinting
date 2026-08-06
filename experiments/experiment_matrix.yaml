@@ -88,6 +88,21 @@ experiments:
     dataset: IMDB
     transport: TCP
 
+  # Second dataset for the same Sentiment Analysis pipeline, no changes
+  # needed to BERT or Sentiment Analysis. Real GLUE-benchmark SST-2
+  # release, downloaded/parsed via the standard library -- see
+  # datasets/sst2.py's docstring for how test.tsv (no labels) was ruled
+  # out in favor of dev.tsv. Verified end-to-end including a real
+  # client/server roundtrip.
+  - name: inference_pytorch_bert_sst2
+    paradigm: inference
+    framework: PyTorch
+    family: Transformer
+    architecture: BERT
+    application: Sentiment Analysis
+    dataset: SST2
+    transport: TCP
+
   # Reuses the BERT/Sentiment Analysis/IMDB pipeline unchanged.
   # DistilBERT's forward() takes only input_ids/attention_mask, no
   # token_type_ids -- see architectures/distilbert.py's docstring.
