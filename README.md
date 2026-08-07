@@ -185,6 +185,19 @@ Without a compiler, everything else in this project still works -- only
 adapters that specifically need to build a native extension are affected,
 and each documents exactly which one clearly in its own module docstring.
 
+`cmake` itself is a normal pip package (`pip install cmake`, ships real
+prebuilt binaries) -- installed in this project's own dev environment
+while retrying `distributed_frameworks/horovod_adapter.py`'s original
+"no CMake" blocker. That got past the CMake layer (with the extra
+`CMAKE_POLICY_VERSION_MINIMUM=3.5` environment variable CMake 3.31+
+reads directly, needed because Horovod's vendored `gloo` submodule's own
+`cmake_minimum_required` predates modern CMake's policy floor), but
+revealed a third, genuine wall underneath: gloo's Windows build requires
+the native `libuv` C library, which isn't something `pip install` can
+provide -- see that module's docstring for the full chain. Horovod stays
+a stub, but `cmake` itself remains available here for whatever needs it
+next.
+
 ### setuptools version (a few stubs only)
 
 Modern setuptools (81+) no longer bundles `pkg_resources`, which several
