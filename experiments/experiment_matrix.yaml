@@ -132,6 +132,24 @@ experiments:
     dataset: Synthetic
     transport: TCP
 
+  # Same Whisper/Speech Recognition/Synthetic combo, but speech_framework:
+  # SpeechBrain genuinely changes behavior here: architectures/whisper.py
+  # dispatches to speech_frameworks/speechbrain_adapter.py's
+  # build_whisper(), a real Conv1d/LSTM acoustic model built from
+  # SpeechBrain's layer primitives directly (its higher-level CRDNN lobe
+  # hard-fails here -- see that module's docstring for the k2_fsa lazy-
+  # import bug found and routed around). Verified end-to-end including a
+  # real client/server roundtrip.
+  - name: inference_pytorch_whisper_synthetic_speechbrain
+    paradigm: inference
+    framework: PyTorch
+    family: Transformer
+    architecture: Whisper
+    application: Speech Recognition
+    dataset: Synthetic
+    transport: TCP
+    speech_framework: SpeechBrain
+
   # Last application/architecture gap, and what llm_framework was added
   # for. Same autoregressive-generation-inside-forward() pattern as
   # Whisper -- see architectures/gpt2.py's docstring. Unlike Image

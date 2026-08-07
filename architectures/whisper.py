@@ -20,6 +20,15 @@ real transcription call, not a truncated stand-in, and it's invisible to
 frameworks/pytorch_adapter.py -- one tensor in (log-mel features, built by
 applications/speech_recognition.py's preprocess), one tensor out (token
 ids), same as every other architecture's wire contract.
+
+Default build constructs the model in-process directly. When
+`speech_framework: SpeechBrain` is set in the config, build() dispatches
+to speech_frameworks/speechbrain_adapter.py's build_whisper() instead,
+which returns a real SpeechBrain Conv1d/LSTM acoustic model shaped to the
+same (80, 3000) in / (*, 10) token-id out contract -- see that module's
+docstring for what was verified and what real bugs (a broken lazy-import
+chain in SpeechBrain's higher-level CRDNN lobe) were found and routed
+around.
 """
 import torch
 
@@ -41,6 +50,20 @@ class _WhisperWrapper(torch.nn.Module):
 
 
 def build(framework_adapter, config):
+    speech_framework = getattr(config, "speech_framework", None)
+    if speech_framework:
+        from core.registry import SPEECH_FRAMEWORKS
+
+        # entry.build() itself raises the standard NotImplementedError for
+        # a stub speech_framework -- no special-casing needed here for that.
+        adapter = SPEECH_FRAMEWORKS.get(speech_framework).build()
+        if not hasattr(adapter, "build_whisper"):
+            raise RuntimeError(
+                f"speech_framework '{speech_framework}' has no Whisper implementation "
+                f"to dispatch to (see architectures/whisper.py)."
+            )
+        return adapter.build_whisper()
+
     from transformers import WhisperConfig, WhisperForConditionalGeneration
 
     whisper_config = WhisperConfig(

@@ -35,6 +35,14 @@ pillow
 fschat
 accelerate
 
+# SpeechBrain: wired into Whisper's dispatch (speech_framework: SpeechBrain)
+# -- uses speechbrain.nnet.CNN/RNN/linear directly, NOT
+# speechbrain.lobes.models.CRDNN, which hard-fails here (its class
+# definition triggers a broken lazy-import of an unrelated optional k2_fsa
+# decoding backend -- confirmed directly, see
+# speech_frameworks/speechbrain_adapter.py's docstring).
+speechbrain
+
 # Federated learning vertical slice (Flower)
 flwr
 
