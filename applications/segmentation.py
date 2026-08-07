@@ -1,30 +1,51 @@
-"""Segmentation application -- real implementation, paired with
-architectures/yolov8_seg.py. preprocess is identical to
-applications/object_detection.py's (640x640 resize, 0-1 scaled RGB, no
-ImageNet normalization -- same YOLO convention).
+"""Segmentation application -- paired with two architectures now,
+architectures/yolov8_seg.py and architectures/sam.py, with genuinely
+different raw output formats (YOLOv8-Seg: detection grid + mask
+prototypes; SAM: a single low-res mask + IoU score). Application
+instances are built with no architecture context (`APPLICATIONS.get(...)
+.build()` takes no args), so postprocess() can't be told which
+architecture produced a given tensor -- it dispatches on total element
+count instead, which is unambiguous: YOLOv8-Seg's flattened output is
+always 1,793,600 elements (116*8400 + 32*160*160), SAM's is always 65,537
+(256*256 + 1) -- imported directly from each architecture module so
+neither number can drift out of sync with its wrapper.
 
-postprocess splits the flat wire tensor back into the two shapes
-architectures/yolov8_seg.py's wrapper flattened (`DETECTIONS_SHAPE`,
-`PROTOTYPES_SHAPE`, `DETECTIONS_NUMEL` imported directly from there so
-the split point can never drift out of sync between the two files), then
-runs Ultralytics' own real decode: `non_max_suppression(..., nc=80)` --
-the `nc` is what tells NMS that only 80 of the post-box columns are class
-scores and the remaining 32 are mask coefficients to carry through
-untouched, rather than misreading all 112 as classes -- followed by
-`process_mask` to linearly combine the 32 prototype masks per detection
-into actual per-object masks. Cross-checked directly against Ultralytics'
-own high-level `YOLO.predict()` on the same real image (Ultralytics'
-bundled bus.jpg test asset) before writing this file: same detection
-count, matching classes/confidences, and mask areas in the same relative
-proportions (the bus mask by far the largest in both runs, as expected) --
-not a hand-rolled reimplementation that happens to run without erroring.
+preprocess is identical to applications/object_detection.py's (640x640
+resize, 0-1 scaled RGB, no ImageNet normalization -- same YOLO
+convention) -- shared by both architectures; SAM's wrapper upscales to
+its own required 1024x1024 internally, see architectures/sam.py's
+docstring for why that's the right place for it rather than here.
+
+YOLOv8-Seg's branch: splits the flat tensor back into the two shapes
+architectures/yolov8_seg.py's wrapper flattened, then runs Ultralytics'
+own real decode: `non_max_suppression(..., nc=80)` -- the `nc` is what
+tells NMS that only 80 of the post-box columns are class scores and the
+remaining 32 are mask coefficients to carry through untouched, rather
+than misreading all 112 as classes -- followed by `process_mask` to
+linearly combine the 32 prototype masks per detection into actual
+per-object masks. Cross-checked directly against Ultralytics' own
+high-level `YOLO.predict()` on the same real image (Ultralytics' bundled
+bus.jpg test asset) before writing this file: same detection count,
+matching classes/confidences, and mask areas in the same relative
+proportions (the bus mask by far the largest in both runs, as expected).
+
+SAM's branch: splits the flat tensor back into the low-res mask and IoU
+score architectures/sam.py's wrapper flattened, applies SAM's own real
+post-decode step (`torch.nn.functional.interpolate` back up to the
+1024x1024 SAM operates at, then a sigmoid + 0.5 threshold -- the same
+mask-decode SAM's own `SamPredictor.predict` performs after calling the
+mask decoder, confirmed directly against its source).
 """
 import numpy as np
 import torch
 
 from applications.base import Application
 from architectures.yolov8_seg import DETECTIONS_NUMEL, DETECTIONS_SHAPE, PROTOTYPES_SHAPE
+from architectures.sam import MASK_NUMEL, MASK_SHAPE
 from core.registry import APPLICATIONS
+
+_YOLOV8_SEG_TOTAL_NUMEL = DETECTIONS_NUMEL + (1 * 32 * 160 * 160)
+_SAM_TOTAL_NUMEL = MASK_NUMEL + 1
 
 _INPUT_SIZE = 640
 
@@ -55,10 +76,22 @@ class Segmentation(Application):
         return raw_sample  # already a tensor
 
     def postprocess(self, output_tensor):
+        flat = output_tensor.flatten()
+        numel = flat.numel()
+
+        if numel == _SAM_TOTAL_NUMEL:
+            return self._postprocess_sam(flat)
+        if numel == _YOLOV8_SEG_TOTAL_NUMEL:
+            return self._postprocess_yolov8_seg(flat)
+        raise ValueError(
+            f"Segmentation.postprocess got {numel} elements, matching neither "
+            f"SAM ({_SAM_TOTAL_NUMEL}) nor YOLOv8-Seg ({_YOLOV8_SEG_TOTAL_NUMEL})."
+        )
+
+    def _postprocess_yolov8_seg(self, flat):
         from ultralytics.utils.nms import non_max_suppression
         from ultralytics.utils.ops import process_mask
 
-        flat = output_tensor.flatten()
         detections = flat[:DETECTIONS_NUMEL].reshape(DETECTIONS_SHAPE)
         prototypes = flat[DETECTIONS_NUMEL:].reshape(PROTOTYPES_SHAPE)
 
@@ -86,6 +119,20 @@ class Segmentation(Application):
                 }
             )
         return results
+
+    def _postprocess_sam(self, flat):
+        low_res_mask = flat[:MASK_NUMEL].reshape(MASK_SHAPE)
+        iou_prediction = flat[MASK_NUMEL:].item()
+
+        upsampled = torch.nn.functional.interpolate(
+            low_res_mask, size=(_INPUT_SIZE, _INPUT_SIZE), mode="bilinear", align_corners=False
+        )
+        mask = torch.sigmoid(upsampled) > 0.5
+
+        return {
+            "mask_area_px": int(mask.sum().item()),
+            "iou_prediction": round(iou_prediction, 4),
+        }
 
 
 APPLICATIONS.register("Segmentation", implemented=True)(Segmentation)

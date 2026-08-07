@@ -482,6 +482,25 @@ experiments:
     transport: TCP
     device: jetson_orin_nano
 
+  # Second Segmentation-application architecture, with a completely
+  # different output format from YOLOv8-Seg above -- Segmentation's
+  # postprocess dispatches between them by total element count (65,537 vs
+  # 1,793,600). Random-init via sam_model_registry["vit_b"](checkpoint=None),
+  # no checkpoint download. See architectures/sam.py's docstring for how
+  # its three internal stages (image_encoder/prompt_encoder/mask_decoder)
+  # are chained directly, and applications/segmentation.py's docstring for
+  # the dispatch. Verified end-to-end through the PyTorch adapter,
+  # including a real client/server roundtrip and a YOLOv8-Seg regression
+  # check afterward.
+  - name: inference_pytorch_sam_synthetic
+    paradigm: inference
+    framework: PyTorch
+    family: Transformer
+    architecture: SAM
+    application: Segmentation
+    dataset: Synthetic
+    transport: TCP
+
   # Written to onnx2tf's documented conversion API but NOT
   # execution-verified -- `tensorflow` has no wheel for this project's
   # Python version at all. Validates and lists fine either way; see

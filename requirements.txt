@@ -13,6 +13,11 @@ ultralytics
 # mapping
 scipy
 
+# SAM (Segment Anything) vertical slice. Pure Python/PyTorch wheel, no
+# compiled extensions, no checkpoint download needed -- built random-init
+# via sam_model_registry["vit_b"](checkpoint=None).
+segment-anything
+
 # BERT/Sentiment Analysis/IMDB vertical slice. Only the tokenizer's fixed
 # vocabulary is downloaded, not pretrained model weights -- the model
 # itself is built from a random-init BertConfig. Deliberately NOT using
