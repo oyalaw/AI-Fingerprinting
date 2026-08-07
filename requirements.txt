@@ -43,6 +43,17 @@ accelerate
 # speech_frameworks/speechbrain_adapter.py's docstring).
 speechbrain
 
+# llama.cpp: wired into GPT-2's dispatch (llm_framework: llama.cpp) --
+# genuinely different from FastChat's dispatch above: runs real llama.cpp
+# C++ inference via a real (~1.2MB) trained test GGUF model, downloaded
+# once to ./data/, decode/re-encode translating at the GPT-2-tokenizer
+# boundary -- see llm_frameworks/llamacpp_adapter.py's docstring.
+# llama-cpp-python has no prebuilt wheel for this Python/platform and
+# builds from source: needs a real C/C++ compiler (this project's own dev
+# machine needed Visual Studio Build Tools -- "Desktop development with
+# C++" workload -- installed specifically to unblock this).
+llama-cpp-python
+
 # Federated learning vertical slice (Flower)
 flwr
 

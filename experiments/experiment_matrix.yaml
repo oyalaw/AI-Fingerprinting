@@ -189,6 +189,28 @@ experiments:
     transport: TCP
     llm_framework: FastChat
 
+  # A different shape of GPT-2 dispatch: llama.cpp is a genuinely separate
+  # C++ engine, not a transformers.GPT2LMHeadModel, so labeling it "the
+  # GPT-2 architecture" the way FastChat's dispatch honestly can would be
+  # wrong. The wire protocol stays GPT-2's own; _LlamaCppWrapper
+  # translates at the model boundary instead (decode wire tokens to text
+  # via GPT-2's tokenizer -> real llama.cpp inference -> re-encode via
+  # GPT-2's tokenizer). Needed a real C/C++ compiler to install at all --
+  # see README.md's "C/C++ compiler prerequisite" section and
+  # llm_frameworks/llamacpp_adapter.py's docstring. Verified end-to-end
+  # with a real, tiny trained test model (stories260K.gguf) including a
+  # real client/server roundtrip -- generated continuations are genuinely
+  # coherent, unlike this project's usual random-init architectures.
+  - name: inference_pytorch_gpt2_imdb_llamacpp
+    paradigm: inference
+    framework: PyTorch
+    family: Transformer
+    architecture: GPT-2
+    application: Text Generation
+    dataset: IMDB
+    transport: TCP
+    llm_framework: llama.cpp
+
   # First RNN-family vertical slice. UCI HAR's real archive is a nested
   # zip with 9 "Inertial Signals" channel files, 128-timestep windows --
   # confirmed by inspection, see datasets/uci_har.py's docstring.
