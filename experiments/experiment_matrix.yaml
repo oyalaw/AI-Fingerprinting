@@ -150,6 +150,26 @@ experiments:
     transport: TCP
     speech_framework: SpeechBrain
 
+  # Same Whisper/Speech Recognition/Synthetic combo, but speech_framework:
+  # ESPnet -- a third dispatch target. Uses ESPnet's real
+  # espnet2.asr.encoder.transformer_encoder.TransformerEncoder directly
+  # (genuine self-attention transformer layers), not the full
+  # ESPnetASRModel/task-recipe machinery -- see
+  # speech_frameworks/espnet_adapter.py's docstring. Needed a real C/C++
+  # compiler to install (ESPnet's transitive sentencepiece dependency
+  # builds from source) -- same prerequisite as llm_framework: llama.cpp
+  # below. Verified end-to-end through architectures/whisper.py's real
+  # dispatch.
+  - name: inference_pytorch_whisper_synthetic_espnet
+    paradigm: inference
+    framework: PyTorch
+    family: Transformer
+    architecture: Whisper
+    application: Speech Recognition
+    dataset: Synthetic
+    transport: TCP
+    speech_framework: ESPnet
+
   # Last application/architecture gap, and what llm_framework was added
   # for. Same autoregressive-generation-inside-forward() pattern as
   # Whisper -- see architectures/gpt2.py's docstring. Unlike Image

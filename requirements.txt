@@ -54,6 +54,15 @@ speechbrain
 # C++" workload -- installed specifically to unblock this).
 llama-cpp-python
 
+# ESPnet: wired into Whisper's dispatch (speech_framework: ESPnet) -- uses
+# espnet2.asr.encoder.transformer_encoder.TransformerEncoder directly (a
+# real ESPnet transformer encoder building block), not the full
+# ESPnetASRModel/task-recipe machinery. Previously blocked on a
+# sentencepiece dependency needing a C/C++ compiler to build from source;
+# resolved by installing one (Visual Studio Build Tools) -- see
+# speech_frameworks/espnet_adapter.py's docstring.
+espnet
+
 # Federated learning vertical slice (Flower)
 flwr
 

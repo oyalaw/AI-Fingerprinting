@@ -14,19 +14,24 @@ through TVM's own graph executor runtime. Follows TVM's own documented
   4. `tvm.contrib.graph_executor.GraphModule` loads and runs the compiled
      module.
 
-Environment note: like ExecuTorch, this one is blocked by dependency
-availability rather than hardware. `apache-tvm` has no prebuilt wheel for
-this project's platform -- `pip install apache-tvm` tries to build
-`apache-tvm-ffi` from source via CMake and fails because this machine has
-no configured C/C++ compiler toolchain. Installing a full compiler
-toolchain just to build one package was judged too invasive an
-environment change to do unprompted, so this adapter follows TVM's
-documented API as closely as this project's other adapters follow theirs,
-but has NOT been execution-verified. TVM has also been mid-transition
-between its classic Relay IR (used here, still documented and supported)
-and a newer Relax IR in recent releases -- re-check this against current
-TVM docs before relying on it, since which IR is the recommended default
-has shifted across versions.
+Environment note, updated after installing a real C/C++ compiler
+(Visual Studio Build Tools) specifically to unblock this and several
+other stubs sharing the "no compiler" root cause: `apache-tvm-ffi` (the
+small component that previously failed to build) now compiles and
+installs successfully. But the main `apache-tvm` package ships its own
+*prebuilt* `tvm_runtime` native library, and loading it fails with
+`OSError: [WinError 127] The specified procedure could not be found` --
+a low-level DLL/binary-compatibility issue in a precompiled artifact,
+not something the compiler helps with (we didn't build this DLL, TVM's
+own release process did). Different, final root cause from the original
+"no compiler" finding -- the compiler genuinely fixed one layer and
+revealed a new one underneath. This adapter still follows TVM's
+documented API as closely as this project's other adapters follow
+theirs, but has NOT been execution-verified. TVM has also been
+mid-transition between its classic Relay IR (used here, still documented
+and supported) and a newer Relax IR in recent releases -- re-check this
+against current TVM docs before relying on it, since which IR is the
+recommended default has shifted across versions.
 
 torch/tvm are imported lazily so this module still registers cleanly --
 and shows up correctly in `python main.py --list` -- on a machine without
