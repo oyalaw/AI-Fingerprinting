@@ -117,6 +117,25 @@ Without a compiler, everything else in this project still works -- only
 adapters that specifically need to build a native extension are affected,
 and each documents exactly which one clearly in its own module docstring.
 
+### setuptools version (a few stubs only)
+
+Modern setuptools (81+) no longer bundles `pkg_resources`, which several
+older packages' own `setup.py`/build scripts still import directly at
+build time (`mmcv`, `pyarrow`'s legacy build path, and others -- see
+cv_frameworks/mmdetection_adapter.py's and fl_frameworks/pysyft_adapter.py's
+docstrings). Pinning `setuptools==80.9.0` (the last release still shipping
+`pkg_resources`) resolves that specific wall for packages that build
+against it. This project's own code has no dependency on `pkg_resources`
+itself and doesn't require this pin -- confirmed via a full regression
+check (registry list + a real ResNet18 roundtrip + ESPnet's real dispatch)
+after applying it in this project's own dev environment. It's noted here
+only because several stub docstrings assume it; getting further past
+`pkg_resources` in each case still surfaces a separate, deeper blocker
+underneath (a genuine Python 3.13+ `exec()`/`locals()` behavior change for
+mmcv, a pyarrow-own version-detection bug, a removed stdlib `distutils`
+module for an old numpy pin) -- see each adapter's own docstring for what
+it actually unlocks vs. doesn't.
+
 ## Running the vertical slices
 
 **Inference** (two terminals):
