@@ -313,6 +313,31 @@ Framework -> Family -> Architecture -> Application -> Dataset):
   always includes a `0. (none -- use the architecture's own default)`
   option, since `validate()` treats all five as optional
   (`required=False`).
+- **Paradigm -> Framework/Architecture/Dataset**: picking
+  `federated_learning` or `distributed_training` now locks Framework to
+  `PyTorch`, Architecture to `ResNet18`/`ResNet50`/`MobileNetV2`/`ViT`,
+  and Dataset to `CIFAR10`, with an explanatory note printed up front.
+  This isn't a metadata-driven narrowing like the others above -- it's a
+  real implementation constraint of every `fl_frameworks/*.py`/
+  `distributed_frameworks/*.py` adapter: confirmed directly (grepped
+  every adapter's data-loading code) that none of them read
+  `config.dataset` at all, they all hardcode
+  `torchvision.datasets.CIFAR10` regardless of what's selected, and their
+  training loops call `.state_dict()`/`.parameters()`/`.train()` directly
+  on whatever `framework.load_model()` returns -- only a plain PyTorch
+  `nn.Module` supports that (confirmed: `frameworks/openvino_adapter.py`'s
+  `load_model()` returns an `OpenVINOModel` wrapper with none of those
+  methods). Before this fix, walking `--interactive` with
+  `paradigm: federated_learning` and, say, `dataset: Synthetic` would
+  validate and run "successfully" while silently mislabeling ground truth
+  -- the captured traffic would actually be CIFAR10 training traffic,
+  but `ground_truth.json` would record `"dataset": "Synthetic"`. This
+  gap remains for hand-written `config.yaml` files -- `core/config.py`'s
+  `validate()` doesn't check this (a runtime-behavior concern, not a
+  registry-compatibility one), so a manually-authored config can still
+  hit it; set `dataset: CIFAR10` and `framework: PyTorch` explicitly for
+  `federated_learning`/`distributed_training` configs until/unless these
+  adapters are generalized to read `config.dataset` for real.
 
 Verified directly by walking all three (Jetson/Ubuntu/iPhone device
 choices) through the real prompt and confirming the framework lists
@@ -321,9 +346,13 @@ the architecture->application->dataset narrowing, a Whisper/Speech
 Recognition walk-through confirming the new Speech framework prompt
 appears (offering ESPnet/SpeechBrain/Whisper, correctly marking
 Kaldi/Coqui STT/NeMo `[stub]`) and correctly stays silent for
-Image Classification/ResNet18 (no applicable sub-framework), plus a full
-run through to `Experiment.run()` with no compatibility error at the end
-for each.
+Image Classification/ResNet18 (no applicable sub-framework), a
+`federated_learning` walk-through confirming Framework/Family/
+Architecture/Dataset all lock down correctly (down to a real, successful
+run through to `Experiment.run()` with `fl_framework: Flower`) and that
+plain `inference` runs are completely unaffected (no note printed, full
+framework list still offered), plus a full run through to
+`Experiment.run()` with no compatibility error at the end for each.
 
 ## Output
 

@@ -110,6 +110,30 @@ def _architecture_compatible_frameworks(entry):
     return {f.lower() for f in compatible}
 
 
+# Every fl_frameworks/*.py and distributed_frameworks/*.py adapter
+# hardcodes its own data loader to torchvision.datasets.CIFAR10 -- none of
+# them read config.dataset at all (confirmed directly: grepped every
+# adapter's data-loading code) -- and each one's training loop calls
+# `model.state_dict()`/`.parameters()`/`.train()` directly on whatever
+# `framework.load_model()` returns, which only a plain PyTorch nn.Module
+# supports (confirmed: frameworks/openvino_adapter.py's load_model()
+# returns an OpenVINOModel wrapper with none of those methods). Neither
+# constraint is caught by core/config.py's validate() -- a config with
+# paradigm=federated_learning, framework=OpenVINO, dataset=Synthetic would
+# validate cleanly and then either crash deep inside the FL adapter, or
+# (worse, for framework=PyTorch + a non-CIFAR10 dataset) run successfully
+# while silently mislabeling ground truth with a dataset that was never
+# actually used. --interactive locks Framework/Architecture/Dataset to
+# what these adapters actually run once paradigm needs it, to prevent
+# ever constructing that mismatched combo through the guided prompt --
+# see README.md's note on this for the same gap in hand-written
+# config.yaml files, which this doesn't (and can't, without changing
+# runtime behavior) protect against.
+_FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES = {"resnet18", "resnet50", "mobilenetv2", "vit"}
+_FL_DISTRIBUTED_DATASET = "cifar10"
+_FL_DISTRIBUTED_FRAMEWORK = "pytorch"
+
+
 def cmd_interactive(_args):
     discover_all()
     print("=== AI Fingerprinting Testbed: guided experiment setup ===")
@@ -122,10 +146,23 @@ def cmd_interactive(_args):
     paradigm = _prompt_from_options("Paradigm", list(VALID_PARADIGMS))
     role = _prompt_from_options("Role", list(VALID_ROLES))
 
+    locks_to_pytorch_cifar10 = paradigm in ("federated_learning", "distributed_training")
+    if locks_to_pytorch_cifar10:
+        print(
+            f"\nNote: every {paradigm} adapter today hardcodes PyTorch/CIFAR10 "
+            "regardless of what's picked below (none of them read the selected "
+            "dataset, and non-PyTorch frameworks return an object their training "
+            "loop can't use) -- Framework/Architecture/Dataset are locked to what "
+            "actually runs, see main.py's _FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES "
+            "comment for the full reasoning."
+        )
+
     device = _prompt_registry_choice("Device", DEVICES)
     device_tags = {t.lower() for t in DEVICES.get(device).meta.get("platform_tags") or ()}
 
     def _framework_matches_device(entry):
+        if locks_to_pytorch_cifar10:
+            return entry.name.lower() == _FL_DISTRIBUTED_FRAMEWORK
         platforms = entry.meta.get("platforms")
         if not platforms:
             return True  # no platform restriction declared -- assume compatible
@@ -133,11 +170,16 @@ def cmd_interactive(_args):
 
     framework = _prompt_registry_choice("Framework", FRAMEWORKS, filter_fn=_framework_matches_device)
 
+    def _architecture_allowed_for_paradigm(entry):
+        return not locks_to_pytorch_cifar10 or entry.name.lower() in _FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES
+
     def _family_has_compatible_architecture(family_entry):
         family_name = family_entry.name.lower()
         for arch_entry in ARCHITECTURES.list():
             arch_family = (arch_entry.meta.get("family") or "").lower()
             if arch_family and arch_family != family_name:
+                continue
+            if not _architecture_allowed_for_paradigm(arch_entry):
                 continue
             compatible = _architecture_compatible_frameworks(arch_entry)
             if not compatible or framework.lower() in compatible:
@@ -151,7 +193,7 @@ def cmd_interactive(_args):
         compatible = _architecture_compatible_frameworks(entry)
         family_ok = not arch_family or arch_family.lower() == family.lower()
         framework_ok = not compatible or framework.lower() in compatible
-        return family_ok and framework_ok
+        return family_ok and framework_ok and _architecture_allowed_for_paradigm(entry)
 
     architecture = _prompt_registry_choice(
         "Architecture",
@@ -173,6 +215,8 @@ def cmd_interactive(_args):
     }
 
     def _dataset_matches_application(entry):
+        if locks_to_pytorch_cifar10:
+            return entry.name.lower() == _FL_DISTRIBUTED_DATASET
         return not application_datasets or entry.name.lower() in application_datasets
 
     dataset = _prompt_registry_choice("Dataset", DATASETS, filter_fn=_dataset_matches_application)
