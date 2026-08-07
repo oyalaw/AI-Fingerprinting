@@ -23,12 +23,17 @@ from core.registry import (
     ALL_REGISTRIES,
     APPLICATIONS,
     ARCHITECTURES,
+    CV_FRAMEWORKS,
     DATASETS,
     DEVICES,
+    DIFFUSION_FRAMEWORKS,
     DISTRIBUTED_FRAMEWORKS,
     FAMILIES,
     FL_FRAMEWORKS,
     FRAMEWORKS,
+    GRAPH_FRAMEWORKS,
+    LLM_FRAMEWORKS,
+    SPEECH_FRAMEWORKS,
     TRANSPORTS,
     discover_all,
 )
@@ -73,6 +78,24 @@ def _prompt_registry_choice(label, registry, filter_fn=None):
         raw = input(f"Select {label} [1-{len(entries)}]: ").strip()
         if raw.isdigit() and 1 <= int(raw) <= len(entries):
             return entries[int(raw) - 1].name
+        print("Invalid choice, try again.")
+
+
+def _prompt_optional_registry_choice(label, registry):
+    """Same as _prompt_registry_choice, but with a leading "(none -- use the
+    default)" option, for the five sub-framework fields (llm_framework etc.)
+    that core/config.py's validate() treats as optional (required=False)."""
+    entries = registry.list()
+    print(f"\n{label} (optional):")
+    print("  0. (none -- use the architecture's own default)")
+    for i, entry in enumerate(entries, start=1):
+        status = "" if entry.implemented else "  [stub]"
+        print(f"  {i}. {entry.name}{status}")
+    while True:
+        raw = input(f"Select {label} [0-{len(entries)}]: ").strip()
+        if raw.isdigit() and 0 <= int(raw) <= len(entries):
+            choice = int(raw)
+            return entries[choice - 1].name if choice > 0 else None
         print("Invalid choice, try again.")
 
 
@@ -166,6 +189,28 @@ def cmd_interactive(_args):
         dataset=dataset,
         transport=transport,
     )
+
+    # Same gating conditions core/config.py's validate() uses to decide
+    # whether each sub-framework field is relevant -- only ask when it
+    # would actually be checked/used, matching architectures/whisper.py's
+    # (etc.) real dispatch conditions.
+    application_lower = application.lower()
+    family_lower = family.lower()
+
+    if application_lower == "text generation":
+        kwargs["llm_framework"] = _prompt_optional_registry_choice("LLM framework", LLM_FRAMEWORKS)
+    if application_lower in ("object detection", "segmentation"):
+        kwargs["cv_framework"] = _prompt_optional_registry_choice("CV framework", CV_FRAMEWORKS)
+    if application_lower == "speech recognition":
+        kwargs["speech_framework"] = _prompt_optional_registry_choice(
+            "Speech framework", SPEECH_FRAMEWORKS
+        )
+    if family_lower == "gnn":
+        kwargs["graph_framework"] = _prompt_optional_registry_choice("Graph framework", GRAPH_FRAMEWORKS)
+    if family_lower == "diffusion":
+        kwargs["diffusion_framework"] = _prompt_optional_registry_choice(
+            "Diffusion framework", DIFFUSION_FRAMEWORKS
+        )
 
     if paradigm == "federated_learning":
         kwargs["fl_framework"] = _prompt_registry_choice("FL framework", FL_FRAMEWORKS)

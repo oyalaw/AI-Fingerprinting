@@ -299,13 +299,31 @@ Framework -> Family -> Architecture -> Application -> Dataset):
   set an unpaired combo -- the application code just does something
   nonsensical or crashes, it isn't cross-checked), only curated in the
   interactive prompt.
+- **Application/Family -> sub-framework prompt**: `--interactive` now
+  asks about `llm_framework`/`cv_framework`/`speech_framework`/
+  `graph_framework`/`diffusion_framework` too, but only when relevant --
+  the exact same gating conditions `core/config.py`'s `validate()` uses
+  (application is `Text Generation`/`Object Detection`/`Segmentation`/
+  `Speech Recognition`, or family is `GNN`/`Diffusion`). Previously these
+  five fields were entirely unreachable through the guided prompt --
+  real, verified sub-framework dispatches like `speech_framework:
+  SpeechBrain`/`ESPnet`, `llm_framework: FastChat`/`llama.cpp`,
+  `graph_framework: PyTorch Geometric`, and `diffusion_framework:
+  Diffusers` could only be set by hand-writing `config.yaml`. The prompt
+  always includes a `0. (none -- use the architecture's own default)`
+  option, since `validate()` treats all five as optional
+  (`required=False`).
 
 Verified directly by walking all three (Jetson/Ubuntu/iPhone device
 choices) through the real prompt and confirming the framework lists
 narrow correctly, a GNN/GCN/Node Classification walk-through confirming
-the new architecture->application->dataset narrowing, plus a full run
-through to `Experiment.run()` with no
-compatibility error at the end.
+the architecture->application->dataset narrowing, a Whisper/Speech
+Recognition walk-through confirming the new Speech framework prompt
+appears (offering ESPnet/SpeechBrain/Whisper, correctly marking
+Kaldi/Coqui STT/NeMo `[stub]`) and correctly stays silent for
+Image Classification/ResNet18 (no applicable sub-framework), plus a full
+run through to `Experiment.run()` with no compatibility error at the end
+for each.
 
 ## Output
 
