@@ -28,6 +28,13 @@ segment-anything
 transformers
 pillow
 
+# FastChat: wired into GPT-2's dispatch (llm_framework: FastChat) -- loads
+# the same random-init model back through FastChat's own load_model()
+# instead of keeping it in-memory. Needed accelerate too, not pulled in
+# automatically by fastchat's own dependency list -- confirmed directly.
+fschat
+accelerate
+
 # Federated learning vertical slice (Flower)
 flwr
 

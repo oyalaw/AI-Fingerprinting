@@ -151,6 +151,26 @@ experiments:
     dataset: IMDB
     transport: TCP
 
+  # Same GPT-2/Text Generation/IMDB combo, but llm_framework: FastChat
+  # genuinely changes behavior here (unlike HuggingFace Transformers
+  # above): architectures/gpt2.py dispatches to
+  # llm_frameworks/fastchat_adapter.py's build_gpt2(), which loads the
+  # model back through FastChat's own load_model() instead of keeping it
+  # in-process. See that module's docstring for the conversation-template
+  # dead end (its default template blows past this project's context
+  # window; the "raw" template works but would need config threaded into
+  # Application.preprocess()). Verified end-to-end including a real
+  # client/server roundtrip with real IMDB prompts.
+  - name: inference_pytorch_gpt2_imdb_fastchat
+    paradigm: inference
+    framework: PyTorch
+    family: Transformer
+    architecture: GPT-2
+    application: Text Generation
+    dataset: IMDB
+    transport: TCP
+    llm_framework: FastChat
+
   # First RNN-family vertical slice. UCI HAR's real archive is a nested
   # zip with 9 "Inertial Signals" channel files, 128-timestep windows --
   # confirmed by inspection, see datasets/uci_har.py's docstring.

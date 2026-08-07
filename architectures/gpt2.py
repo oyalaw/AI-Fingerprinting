@@ -21,6 +21,14 @@ situation DistilBERT has (minus token_type_ids). applications/
 text_generation.py stacks them into a single `(2, seq_len)` tensor;
 _GPT2Wrapper unstacks it here, mirroring architectures/distilbert.py's
 _DistilBertWrapper.
+
+Default build constructs the model in-process directly. When
+`llm_framework: FastChat` is set in the config, build() dispatches to
+llm_frameworks/fastchat_adapter.py's build_gpt2() instead, which builds
+the identical model but loads it back through FastChat's own
+`fastchat.model.load_model()` rather than keeping the in-memory object --
+see that module's docstring for what was verified and what was found to
+be out of scope (FastChat's conversation-template formatting).
 """
 import torch
 
@@ -50,6 +58,20 @@ class _GPT2Wrapper(torch.nn.Module):
 
 
 def build(framework_adapter, config):
+    llm_framework = getattr(config, "llm_framework", None)
+    if llm_framework:
+        from core.registry import LLM_FRAMEWORKS
+
+        # entry.build() itself raises the standard NotImplementedError for
+        # a stub llm_framework -- no special-casing needed here for that.
+        adapter = LLM_FRAMEWORKS.get(llm_framework).build()
+        if not hasattr(adapter, "build_gpt2"):
+            raise RuntimeError(
+                f"llm_framework '{llm_framework}' has no GPT-2 implementation "
+                f"to dispatch to (see architectures/gpt2.py)."
+            )
+        return adapter.build_gpt2()
+
     from transformers import AutoTokenizer, GPT2Config, GPT2LMHeadModel
 
     tokenizer = AutoTokenizer.from_pretrained("gpt2")
