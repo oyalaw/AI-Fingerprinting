@@ -198,6 +198,17 @@ provide -- see that module's docstring for the full chain. Horovod stays
 a stub, but `cmake` itself remains available here for whatever needs it
 next.
 
+`ninja` is similarly just a normal pip package (already installed here,
+confirmed a real prebuilt `ninja.exe` -- `ninja --version` reports
+1.13.0) -- installed while retrying `llm_frameworks/exllama_adapter.py`'s
+original "no ninja" blocker for ExLlamaV2's JIT-compiled C++ extension.
+With both ninja and the compiler available, the JIT build now genuinely
+runs and confirms (rather than just predicts) the real, final blocker:
+ExLlamaV2's kernels are CUDA/ROCm-only by design, with no CPU-only code
+path at all -- `CUDA_HOME environment variable is not set`, a pure
+hardware gate, not a build-tool one. ExLlamaV2 was uninstalled again
+afterward (confirmed no side effects).
+
 ### setuptools version (a few stubs only)
 
 Modern setuptools (81+) no longer bundles `pkg_resources`, which several
