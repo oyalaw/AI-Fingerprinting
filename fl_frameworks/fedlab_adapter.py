@@ -11,12 +11,15 @@ distributed_frameworks/ddp_adapter.py already uses. Server is rank 0
 `sample_ratio` of clients per round), each client is rank 1..N
 (`PassiveClientManager` + `SGDClientTrainer`).
 
-Reuses the same PyTorch/ResNet18/CIFAR10 combo as fl_frameworks/flower_adapter.py,
-partitioned across clients the same way (`_ClientPartitionedCIFAR10` here
-mirrors `_partition_loader` there) -- FedLab ships its own disk-persisting
-`fedlab.contrib.dataset.PartitionedCIFAR10`, but a small in-memory wrapper
-matching this project's existing dataset/family conventions is more
-consistent than adopting FedLab's separate on-disk partition cache.
+Reuses the same PyTorch/Image Classification combo as
+fl_frameworks/flower_adapter.py, partitioned across clients the same way
+(`_ClientPartitionedDataset` here mirrors `_partition_loader` there) --
+FedLab ships its own disk-persisting `fedlab.contrib.dataset.PartitionedCIFAR10`,
+but reusing core/training_data.py's registry-based loader (config.dataset,
+not a hardcoded CIFAR10) matches this project's existing dataset/family
+conventions more consistently than adopting FedLab's separate on-disk
+partition cache. See core/config.py's FL_DISTRIBUTED_COMPATIBLE_DATASETS
+for exactly which datasets that supports and why.
 
 **What was actually tested here, and what's still unresolved:** a real bug
 was found and fixed -- `SyncServerHandler` lives in
@@ -47,6 +50,7 @@ without any of them installed -- only actually running the FL slice needs
 them.
 """
 from core.registry import ARCHITECTURES, FL_FRAMEWORKS, FRAMEWORKS
+from core.training_data import build_classification_dataset
 from fl_frameworks.base import FLFrameworkAdapter
 
 
@@ -56,33 +60,27 @@ def _build_model(config):
     return framework.load_model(architecture_entry, config)
 
 
-class _ClientPartitionedCIFAR10:
+class _ClientPartitionedDataset:
     """Matches the `dataset.get_dataloader(id, batch_size)` interface
     fedlab.contrib.algorithm.basic_client.SGDClientTrainer.local_process
     expects -- see fedlab/contrib/algorithm/basic_client.py."""
 
-    def __init__(self, num_clients, num_requests):
-        self.num_clients = max(num_clients, 1)
-        self.num_requests = num_requests
+    def __init__(self, config):
+        self.config = config
+        self.num_clients = max(config.num_clients, 1)
 
     def get_dataloader(self, client_id, batch_size):
-        import numpy as np
-        import torch
-        import torchvision
         from torch.utils.data import DataLoader, Subset
 
-        from families.cnn import normalize_chw
+        full_dataset = build_classification_dataset(
+            self.config, self.num_clients * self.config.num_requests
+        )
+        indices = list(range(client_id, len(full_dataset), self.num_clients))[
+            : self.config.num_requests
+        ]
+        subset = Subset(full_dataset, indices)
 
-        dataset = torchvision.datasets.CIFAR10(root="./data", train=True, download=True)
-        indices = list(range(client_id, len(dataset), self.num_clients))[: self.num_requests]
-        subset = Subset(dataset, indices)
-
-        def collate(batch):
-            images = torch.stack([normalize_chw(np.array(img)) for img, _ in batch])
-            labels = torch.tensor([label for _, label in batch])
-            return images, labels
-
-        return DataLoader(subset, batch_size=max(batch_size, 1), collate_fn=collate)
+        return DataLoader(subset, batch_size=max(batch_size, 1))
 
 
 class FedLabAdapter(FLFrameworkAdapter):
@@ -112,9 +110,7 @@ class FedLabAdapter(FLFrameworkAdapter):
 
         model = _build_model(config)
         trainer = SGDClientTrainer(model)
-        trainer.setup_dataset(
-            _ClientPartitionedCIFAR10(config.num_clients, config.num_requests)
-        )
+        trainer.setup_dataset(_ClientPartitionedDataset(config))
         trainer.setup_optim(epochs=1, batch_size=config.batch_size, lr=0.01)
 
         rank = config.client_index + 1

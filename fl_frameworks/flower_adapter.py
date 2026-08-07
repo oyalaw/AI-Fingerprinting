@@ -1,17 +1,26 @@
 """Flower federated learning adapter -- the one fully-implemented FL
-framework this pass. Wraps the same PyTorch/ResNet18/CIFAR10 combo already
-used by the inference slice: each simulated client trains locally on its own
-CIFAR10 partition for one local pass per round and uploads weight updates to
-the Flower server, which averages them (FedAvg) and broadcasts the new
-global model. Flower manages its own client/server gRPC transport
-internally -- our job is just to start it with the right config and let
-scapy capture whatever port it opens.
+framework this pass. Wraps the same PyTorch/Image Classification combo
+already used by the inference slice: each simulated client trains locally
+on its own partition of config.dataset for one local pass per round and
+uploads weight updates to the Flower server, which averages them (FedAvg)
+and broadcasts the new global model. Flower manages its own client/server
+gRPC transport internally -- our job is just to start it with the right
+config and let scapy capture whatever port it opens.
+
+Data loading goes through core/training_data.py's
+build_classification_dataset() -- the same DATASETS/APPLICATIONS registry
+abstraction paradigm=inference uses -- rather than hardcoding
+torchvision.datasets.CIFAR10 the way this adapter originally did. See
+core/config.py's FL_DISTRIBUTED_COMPATIBLE_DATASETS for exactly which
+datasets that supports and why (CIFAR10 or Synthetic; both real 10-label
+classification data, unlike e.g. ImageNet's 1000 classes).
 
 torch/torchvision/flwr are imported lazily inside functions, not at module
 scope, so `python main.py --list` can enumerate this registration without
 any of them installed -- only actually running the FL slice needs them.
 """
 from core.registry import ARCHITECTURES, FL_FRAMEWORKS, FRAMEWORKS
+from core.training_data import build_classification_dataset
 from fl_frameworks.base import FLFrameworkAdapter
 
 
@@ -35,24 +44,14 @@ def _set_parameters(model, parameters):
 
 
 def _partition_loader(config, client_index):
-    import numpy as np
-    import torch
-    import torchvision
     from torch.utils.data import DataLoader, Subset
 
-    from families.cnn import normalize_chw
-
-    dataset = torchvision.datasets.CIFAR10(root="./data", train=True, download=True)
     num_clients = max(config.num_clients, 1)
-    indices = list(range(client_index, len(dataset), num_clients))[: config.num_requests]
-    subset = Subset(dataset, indices)
+    full_dataset = build_classification_dataset(config, num_clients * config.num_requests)
+    indices = list(range(client_index, len(full_dataset), num_clients))[: config.num_requests]
+    subset = Subset(full_dataset, indices)
 
-    def collate(batch):
-        images = torch.stack([normalize_chw(np.array(img)) for img, _ in batch])
-        labels = torch.tensor([label for _, label in batch])
-        return images, labels
-
-    return DataLoader(subset, batch_size=max(config.batch_size, 1), collate_fn=collate)
+    return DataLoader(subset, batch_size=max(config.batch_size, 1))
 
 
 class FlowerAdapter(FLFrameworkAdapter):

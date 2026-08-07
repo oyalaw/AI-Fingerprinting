@@ -300,11 +300,40 @@ experiments:
     num_clients: 2
     num_rounds: 3
 
+  # Same Flower/ResNet18 combo, but dataset: Synthetic -- genuinely
+  # different traffic now, not just a label. core/training_data.py's
+  # build_classification_dataset() replaced every FL/distributed
+  # adapter's hardcoded torchvision.datasets.CIFAR10 loader with the same
+  # DATASETS/APPLICATIONS registry paradigm=inference uses, so this
+  # actually trains on Synthetic data (fast, no download) instead of
+  # silently training on CIFAR10 while claiming Synthetic in ground
+  # truth, which is what every FL/distributed adapter did before this
+  # entry existed. Verified end-to-end including a real client/server
+  # roundtrip, ground_truth.json correctly recording "dataset":
+  # "Synthetic". See core/config.py's FL_DISTRIBUTED_COMPATIBLE_DATASETS
+  # for exactly which datasets this supports and why (CIFAR10 or
+  # Synthetic only -- both real 10-label classification data, unlike
+  # e.g. ImageNet's 1000 classes).
+  - name: fl_flower_resnet18_synthetic
+    paradigm: federated_learning
+    fl_framework: Flower
+    framework: PyTorch
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: Synthetic
+    transport: TCP
+    num_clients: 1
+    num_rounds: 1
+
   # Real torch.distributed gloo/TCP rendezvous verified working in
   # isolation on this machine; the client/server pair hangs indefinitely
   # right after connecting, inside FedLab's own post-connect handshake --
   # see frameworks/fedlab_adapter.py's docstring for exactly what was
-  # isolated and what remains unresolved.
+  # isolated and what remains unresolved. Its data loading was updated to
+  # the same registry-based loader Flower/DDP/FairScale now use
+  # (core/training_data.py) for consistency, but that change couldn't be
+  # verified end-to-end here either, for the same pre-existing hang.
   - name: fl_fedlab_resnet18_cifar10
     paradigm: federated_learning
     fl_framework: FedLab
@@ -322,7 +351,12 @@ experiments:
   # POSIX-only `resource` module), and separately, the simulator_run()
   # API this adapter uses runs every client in-process over in-memory
   # queues even on a supported OS -- no real network traffic at all. See
-  # fl_frameworks/nvflare_adapter.py's docstring for both.
+  # fl_frameworks/nvflare_adapter.py's docstring for both. Its generated
+  # client script was updated to call core/training_data.py's shared
+  # loader instead of duplicating CIFAR10-loading code inline, but
+  # whether that script can actually import this project's own modules
+  # when NVFlare executes it is unverified here too, for the same
+  # pre-existing import failure -- see that module's docstring.
   - name: fl_nvflare_resnet18_cifar10
     paradigm: federated_learning
     fl_framework: NVFlare
@@ -347,13 +381,48 @@ experiments:
     num_clients: 2
     num_rounds: 2
 
+  # Same DDP/ResNet18 combo, dataset: Synthetic -- see the Flower
+  # Synthetic entry above for what changed and why. Verified end-to-end
+  # with a real 2-process coordinator+worker run, both ranks completing
+  # cleanly, correct ground truth.
+  - name: distributed_ddp_resnet18_synthetic
+    paradigm: distributed_training
+    distributed_framework: DistributedDataParallel
+    framework: PyTorch
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: Synthetic
+    transport: TCP
+    num_clients: 2
+    num_rounds: 1
+
   # OSS + ShardedDataParallel over the same gloo/TCP process group as the
-  # DDP entry above. The FairScale-specific mechanics were verified
-  # end-to-end via an isolated two-rank synthetic-data script (both ranks
-  # completed real forward/backward/step cycles cleanly); the full
-  # main.py path with real CIFAR10 wasn't run start-to-finish here purely
-  # due to a slow download in this environment, not anything specific to
-  # FairScale -- see distributed_frameworks/fairscale_adapter.py's docstring.
+  # DDP entry above. Originally only spot-verified via an isolated
+  # two-rank synthetic-data script, not through main.py, because
+  # CIFAR10's ~170MB train split downloaded too slowly in this
+  # environment (~40 min). Switching to dataset: Synthetic here removes
+  # that slowness entirely (no download at all) -- this is the first
+  # real, full main.py run of this adapter, both ranks completing
+  # cleanly, correct ground truth.
+  - name: distributed_fairscale_resnet18_synthetic
+    paradigm: distributed_training
+    distributed_framework: FairScale
+    framework: PyTorch
+    family: CNN
+    architecture: ResNet18
+    application: Image Classification
+    dataset: Synthetic
+    transport: TCP
+    num_clients: 2
+    num_rounds: 1
+
+  # Same FairScale combo against the real CIFAR10 split -- not directly
+  # re-verified through main.py here (the Synthetic entry above is what
+  # actually got the first full run), but the underlying data loading is
+  # identical code (core/training_data.py) to every other CIFAR10 entry
+  # in this file that has been verified, so this is expected to work the
+  # same way.
   - name: distributed_fairscale_resnet18_cifar10
     paradigm: distributed_training
     distributed_framework: FairScale

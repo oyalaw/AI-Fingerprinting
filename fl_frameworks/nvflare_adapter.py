@@ -31,7 +31,24 @@ server-side aggregation controller, and .to(ScriptRunner(script=...), site)
 per client, where the script is a real standalone training script (written
 to a temp file at run time, since ScriptRunner requires a script path, not
 an inline callable) using nvflare.client's flare.init()/receive()/send()
-around the same PyTorch/ResNet18/CIFAR10 combo as fl_frameworks/flower_adapter.py.
+around the same PyTorch/Image Classification combo as
+fl_frameworks/flower_adapter.py.
+
+Data loading in that generated script calls
+core.training_data.build_classification_dataset() -- the same DATASETS/
+APPLICATIONS registry loader every other FL/distributed adapter now uses,
+config.dataset/config.application baked into the script text alongside
+NUM_REQUESTS/BATCH_SIZE -- rather than duplicating a second, separate
+CIFAR10/normalize_chw implementation inline the way this script originally
+did. This assumes ScriptRunner(launch_external_process=False) executes the
+script in the same Python process/sys.path as this project (NVFlare's own
+simulator design for exactly this "skip subprocess overhead" case), so
+`from core.training_data import ...` resolves normally -- **not verified
+here**: `import nvflare` already fails outright on this Windows machine
+(caveat #1 above), so this script has never actually been executed by
+NVFlare in this environment. If that assumption turns out wrong wherever
+NVFlare does run, the fallback is reinlining the loading logic the way it
+originally was -- see this module's git history for that version.
 
 run_client() isn't meaningful for this adapter: in simulator mode there is
 no separate client process to launch -- simulator_run() drives every
@@ -49,43 +66,40 @@ from fl_frameworks.base import FLFrameworkAdapter
 
 _CLIENT_SCRIPT = textwrap.dedent(
     """
-    import numpy as np
+    import types
+
     import torch
-    import torchvision
-    from torch.utils.data import DataLoader, Subset
 
     import nvflare.client as flare
 
-    IMAGENET_MEAN = (0.485, 0.456, 0.406)
-    IMAGENET_STD = (0.229, 0.224, 0.225)
-
-
-    def normalize_chw(array_hwc_uint8):
-        tensor = torch.from_numpy(array_hwc_uint8.copy()).float().permute(2, 0, 1) / 255.0
-        mean = torch.tensor(IMAGENET_MEAN).view(3, 1, 1)
-        std = torch.tensor(IMAGENET_STD).view(3, 1, 1)
-        return (tensor - mean) / std
+    from core.registry import ARCHITECTURES, FRAMEWORKS
+    from core.training_data import build_classification_dataset
 
 
     def main():
         flare.init()
-        model = torchvision.models.resnet18(weights=None, num_classes=10)
+
+        data_config = types.SimpleNamespace(
+            dataset="DATASET_NAME",
+            application="APPLICATION_NAME",
+            num_requests=NUM_REQUESTS,
+        )
+
+        framework = FRAMEWORKS.get("PyTorch").build()
+        architecture_entry = ARCHITECTURES.get("ARCHITECTURE_NAME")
+        model = framework.load_model(architecture_entry, data_config)
 
         info = flare.system_info()
         site_name = flare.get_site_name()
         num_clients = max(int(info.get("num_clients", 1)), 1)
         client_index = int(site_name.split("-")[-1]) - 1 if "-" in site_name else 0
 
-        dataset = torchvision.datasets.CIFAR10(root="./data", train=True, download=True)
-        indices = list(range(client_index, len(dataset), num_clients))[:NUM_REQUESTS]
-        subset = Subset(dataset, indices)
+        from torch.utils.data import DataLoader, Subset
 
-        def collate(batch):
-            images = torch.stack([normalize_chw(np.array(img)) for img, _ in batch])
-            labels = torch.tensor([label for _, label in batch])
-            return images, labels
-
-        loader = DataLoader(subset, batch_size=BATCH_SIZE, collate_fn=collate)
+        full_dataset = build_classification_dataset(data_config, num_clients * NUM_REQUESTS)
+        indices = list(range(client_index, len(full_dataset), num_clients))[:NUM_REQUESTS]
+        subset = Subset(full_dataset, indices)
+        loader = DataLoader(subset, batch_size=BATCH_SIZE)
 
         while flare.is_running():
             input_model = flare.receive()
@@ -137,9 +151,13 @@ class NVFlareAdapter(FLFrameworkAdapter):
         job.to(FedAvg(num_clients=config.num_clients, num_rounds=config.num_rounds), "server")
         job.to(model, "server")
 
-        script_source = _CLIENT_SCRIPT.replace(
-            "NUM_REQUESTS", str(config.num_requests)
-        ).replace("BATCH_SIZE", str(max(config.batch_size, 1)))
+        script_source = (
+            _CLIENT_SCRIPT.replace("NUM_REQUESTS", str(config.num_requests))
+            .replace("BATCH_SIZE", str(max(config.batch_size, 1)))
+            .replace("DATASET_NAME", config.dataset)
+            .replace("APPLICATION_NAME", config.application)
+            .replace("ARCHITECTURE_NAME", config.architecture)
+        )
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             script_path = Path(tmp_dir) / "client_train.py"

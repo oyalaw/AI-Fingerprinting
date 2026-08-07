@@ -1,9 +1,16 @@
 """PyTorch DistributedDataParallel adapter -- the one fully-implemented
 distributed-training framework this pass. No extra dependency: DDP ships
-inside `torch` already. Trains the same ResNet18/CIFAR10 combo across
-processes using the gloo backend (CPU-friendly, works the same on every
-device class in scope) with TCP rendezvous -- that rendezvous plus the
-per-step gradient all-reduce traffic is exactly what gets captured.
+inside `torch` already. Trains the same PyTorch/Image Classification combo
+across processes using the gloo backend (CPU-friendly, works the same on
+every device class in scope) with TCP rendezvous -- that rendezvous plus
+the per-step gradient all-reduce traffic is exactly what gets captured.
+
+Data loading goes through core/training_data.py's
+build_classification_dataset() (config.dataset, via the DATASETS/
+APPLICATIONS registries) rather than hardcoding
+torchvision.datasets.CIFAR10 the way this adapter originally did -- see
+core/config.py's FL_DISTRIBUTED_COMPATIBLE_DATASETS for exactly which
+datasets that supports and why.
 
 torch/torchvision are imported lazily inside functions, not at module
 scope, so `python main.py --list` can enumerate this registration without
@@ -12,6 +19,7 @@ either installed -- only actually running the DDP slice needs them.
 import os
 
 from core.registry import ARCHITECTURES, DISTRIBUTED_FRAMEWORKS, FRAMEWORKS
+from core.training_data import build_classification_dataset
 from distributed_frameworks.base import DistributedFrameworkAdapter
 
 
@@ -24,23 +32,13 @@ def _init_process_group(config, rank):
 
 
 def _build_loader(config):
-    import numpy as np
-    import torch
     import torch.distributed as dist
-    import torchvision
     from torch.utils.data import DataLoader, DistributedSampler
 
-    from families.cnn import normalize_chw
-
-    dataset = torchvision.datasets.CIFAR10(root="./data", train=True, download=True)
+    dataset = build_classification_dataset(config, max(config.num_clients, 1) * config.num_requests)
     sampler = DistributedSampler(dataset, num_replicas=max(config.num_clients, 1), rank=dist.get_rank())
 
-    def collate(batch):
-        images = torch.stack([normalize_chw(np.array(img)) for img, _ in batch])
-        labels = torch.tensor([label for _, label in batch])
-        return images, labels
-
-    return DataLoader(dataset, batch_size=max(config.batch_size, 1), sampler=sampler, collate_fn=collate)
+    return DataLoader(dataset, batch_size=max(config.batch_size, 1), sampler=sampler)
 
 
 def _train(config, logger, event_log, rank):

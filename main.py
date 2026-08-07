@@ -19,7 +19,7 @@ import sys
 
 from core.config import (
     FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES,
-    FL_DISTRIBUTED_DATASET,
+    FL_DISTRIBUTED_COMPATIBLE_DATASETS,
     FL_DISTRIBUTED_FRAMEWORK,
     VALID_PARADIGMS,
     VALID_ROLES,
@@ -130,15 +130,15 @@ def cmd_interactive(_args):
     paradigm = _prompt_from_options("Paradigm", list(VALID_PARADIGMS))
     role = _prompt_from_options("Role", list(VALID_ROLES))
 
-    locks_to_pytorch_cifar10 = paradigm in ("federated_learning", "distributed_training")
-    if locks_to_pytorch_cifar10:
+    locks_fl_distributed = paradigm in ("federated_learning", "distributed_training")
+    if locks_fl_distributed:
         print(
-            f"\nNote: every {paradigm} adapter today hardcodes "
-            f"{FL_DISTRIBUTED_FRAMEWORK}/{FL_DISTRIBUTED_DATASET} regardless of what's "
-            "picked below (none of them read the selected dataset, and other frameworks "
-            "return an object their training loop can't use) -- Framework/Architecture/"
-            "Dataset are locked to what actually runs; core/config.py's validate() "
-            "enforces this same constraint for hand-written config.yaml files too, see "
+            f"\nNote: every {paradigm} adapter's training loop is CrossEntropyLoss over a "
+            f"fixed 10-class output, so Framework is locked to {FL_DISTRIBUTED_FRAMEWORK} and "
+            "Architecture to the num_classes=10 image classifiers below -- Dataset is real, "
+            f"not locked: {FL_DISTRIBUTED_COMPATIBLE_DATASETS} both actually get loaded via "
+            "core/training_data.py, whichever you pick. core/config.py's validate() enforces "
+            "the same constraints for hand-written config.yaml files too, see "
             "FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES's comment there for the full reasoning."
         )
 
@@ -146,7 +146,7 @@ def cmd_interactive(_args):
     device_tags = {t.lower() for t in DEVICES.get(device).meta.get("platform_tags") or ()}
 
     def _framework_matches_device(entry):
-        if locks_to_pytorch_cifar10:
+        if locks_fl_distributed:
             return entry.name.lower() == FL_DISTRIBUTED_FRAMEWORK.lower()
         platforms = entry.meta.get("platforms")
         if not platforms:
@@ -158,7 +158,7 @@ def cmd_interactive(_args):
     fl_distributed_compatible_lower = {a.lower() for a in FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES}
 
     def _architecture_allowed_for_paradigm(entry):
-        return not locks_to_pytorch_cifar10 or entry.name.lower() in fl_distributed_compatible_lower
+        return not locks_fl_distributed or entry.name.lower() in fl_distributed_compatible_lower
 
     def _family_has_compatible_architecture(family_entry):
         family_name = family_entry.name.lower()
@@ -201,9 +201,11 @@ def cmd_interactive(_args):
         d.lower() for d in (APPLICATIONS.get(application).meta.get("datasets") or ())
     }
 
+    fl_distributed_datasets_lower = {d.lower() for d in FL_DISTRIBUTED_COMPATIBLE_DATASETS}
+
     def _dataset_matches_application(entry):
-        if locks_to_pytorch_cifar10:
-            return entry.name.lower() == FL_DISTRIBUTED_DATASET.lower()
+        if locks_fl_distributed:
+            return entry.name.lower() in fl_distributed_datasets_lower
         return not application_datasets or entry.name.lower() in application_datasets
 
     dataset = _prompt_registry_choice("Dataset", DATASETS, filter_fn=_dataset_matches_application)

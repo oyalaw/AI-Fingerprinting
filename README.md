@@ -61,11 +61,12 @@ Written to each framework's documented API but **not execution-verified** in thi
 - **Edge Impulse** -> CNN -> ResNet18 -- architecturally different from the ten converters above: Edge Impulse has no local "convert my own PyTorch architecture" path at all, models are trained through Edge Impulse Studio (cloud, account required) and exported as a `.eim` file. `load_model` implements the real `edge_impulse_linux.image.ImageImpulseRunner` API faithfully but raises a clear error for ResNet18 specifically, since this project has no Edge Impulse export for it to load.
 - **MNN** -> CNN -> ResNet18, same combo -- ONNX export, then the `mnnconvert` CLI (`--framework ONNX --modelFile ... --MNNModel ...`) bundled in the `mnn` PyPI package, then `MNN.Interpreter`/session-based inference. Blocked by something stronger than the dependency/hardware gaps above: directly testing `mnnconvert --help` in this environment triggered an unprompted `pip install aliyun-log-python-sdk` plus a chain of unrelated network dependencies, with no `--help` output produced at all -- not normal behavior for a --help flag under any framing. Nothing from that install completed here (a downstream `head` cut the pipe first), and `mnn` has been uninstalled from this project's environment as a precaution. Written to MNN's documented CLI/Interpreter API, but re-verify that behavior yourself and decide deliberately before ever actually running the conversion step -- see frameworks/mnn_adapter.py's docstring.
 
-- **Federated learning**: Flower (same PyTorch/ResNet18/CIFAR10 combo, partitioned across simulated clients) -- verified end-to-end.
-- **Federated learning (not execution-verified here)**: FedLab -- same combo, communicates over `torch.distributed`'s gloo/TCP rendezvous (same mechanism as the DistributedDataParallel adapter below, verified working in isolation on this machine). A real bug was found and fixed (`SyncServerHandler` was imported from the wrong module). But the full client/server pair hangs indefinitely right after connecting: an isolated test of just FedLab's own post-connect handshake shows the client's `setup()` call returns normally while the server's matching `setup()` call -- blocked on a `recv()` for that same message -- never does. Investigation points at a FedLab/PyTorch version incompatibility, but that's not a confirmed root cause; treat frameworks/fedlab_adapter.py the same as executorch_adapter.py/tvm_adapter.py, and re-run the isolated setup diagnostics in its docstring yourself before relying on it.
-- **Federated learning (not execution-verified here, and wouldn't produce real network traffic even where it runs)**: NVFlare -- same combo, via NVFlare's Client API (`FedJob` + `FedAvg` controller + `ScriptRunner` running a real standalone training script). Two separate, serious caveats: (1) `import nvflare` fails outright on this Windows machine -- confirmed directly, its `__init__.py` unconditionally pulls in `nvflare.fuel.f3.cellnet.net_agent`, which does `import resource`, the POSIX-only resource-limits module that doesn't exist on Windows at all; NVFlare requires Linux/macOS. (2) Separately and more fundamentally: this adapter uses `FedJob.simulator_run()`, the simplest API match for "run a federated round from one Python call" -- but simulator mode runs the server and all clients as in-process threads over in-memory queues, not real network sockets, so even on a supported OS this configuration produces no capturable traffic at all. Real traffic needs NVFlare's separate POC/production deployment mode (`nvflare provision` + a real `start.sh` process per site), which is out of scope here. Unlike FedLab/ExecuTorch/TVM, this one wouldn't serve this project's purpose even if it ran successfully in its current form.
-- **Distributed training**: PyTorch `DistributedDataParallel` (same combo, multi-process gradient sync)
-- **Distributed training**: FairScale (`OSS` optimizer-state sharding + `ShardedDataParallel`, ZeRO stage 1) -- layers on the exact same gloo/TCP process group as the DDP adapter (confirmed directly from `OSS`/`ShardedDataParallel`'s real constructor signatures). The actually-new code -- wrapping a real ResNet18, running real forward/backward/step cycles over a live two-process group -- was verified end-to-end via an isolated two-rank synthetic-data script (both ranks completed cleanly, no hang). The full adapter through `main.py` with real CIFAR10 wasn't run start-to-finish in this session purely because of a slow download in this environment (~40 min, a pre-existing property of the shared `_build_loader` code this adapter reuses unchanged from ddp_adapter.py, not anything new).
+- **Federated learning / distributed training**: every adapter below used to hardcode `torchvision.datasets.CIFAR10` directly, completely ignoring `config.dataset` -- confirmed directly this was a real, silent ground-truth-mislabeling risk (a config with `dataset: Synthetic` would validate and run "successfully" while actually training on CIFAR10 underneath). Fixed: `core/training_data.py`'s `build_classification_dataset()` now loads whichever dataset was actually selected via the same `DATASETS`/`APPLICATIONS` registry abstraction `paradigm=inference` already uses, and every adapter below wraps that instead of its own hardcoded loader. Deliberately scoped narrow (not generalized to arbitrary applications): `Dataset.samples()` yields a human-readable label *string* for inference-time logging only, there's no numeric-label or loss-function concept anywhere in the `Application` interface, so this only supports `Image Classification` with the same four `num_classes=10` architectures as before (`ResNet18`/`ResNet50`/`MobileNetV2`/`ViT`) and two datasets that actually fit that (`CIFAR10`, real 10 classes; `Synthetic`, `f"synthetic-{i % 10}"` -- confirmed directly in `datasets/synthetic.py`) -- `ImageNet`'s 1000 classes don't, without also changing how the architectures are built. See `core/config.py`'s `FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES`/`FL_DISTRIBUTED_COMPATIBLE_DATASETS` for the enforced constraint (both `--interactive` and `validate()` share it, so a hand-written `config.yaml` hitting the old mismatch is now rejected with a clear error too, not just the guided prompt).
+- **Federated learning**: Flower (same PyTorch/Image Classification combo, partitioned across simulated clients) -- verified end-to-end with both `dataset: CIFAR10` (the original path, confirmed still working unchanged) and `dataset: Synthetic` (confirmed `ground_truth.json` now correctly records `"dataset": "Synthetic"`, not silently CIFAR10).
+- **Federated learning (not execution-verified here)**: FedLab -- same combo, communicates over `torch.distributed`'s gloo/TCP rendezvous (same mechanism as the DistributedDataParallel adapter below, verified working in isolation on this machine). A real bug was found and fixed (`SyncServerHandler` was imported from the wrong module). But the full client/server pair hangs indefinitely right after connecting: an isolated test of just FedLab's own post-connect handshake shows the client's `setup()` call returns normally while the server's matching `setup()` call -- blocked on a `recv()` for that same message -- never does. Investigation points at a FedLab/PyTorch version incompatibility, but that's not a confirmed root cause; treat frameworks/fedlab_adapter.py the same as executorch_adapter.py/tvm_adapter.py, and re-run the isolated setup diagnostics in its docstring yourself before relying on it. Its data loading was updated to the same `core/training_data.py` loader for consistency, but that specific change couldn't be verified end-to-end either, for the same pre-existing hang.
+- **Federated learning (not execution-verified here, and wouldn't produce real network traffic even where it runs)**: NVFlare -- same combo, via NVFlare's Client API (`FedJob` + `FedAvg` controller + `ScriptRunner` running a real standalone training script). Two separate, serious caveats: (1) `import nvflare` fails outright on this Windows machine -- confirmed directly, its `__init__.py` unconditionally pulls in `nvflare.fuel.f3.cellnet.net_agent`, which does `import resource`, the POSIX-only resource-limits module that doesn't exist on Windows at all; NVFlare requires Linux/macOS. (2) Separately and more fundamentally: this adapter uses `FedJob.simulator_run()`, the simplest API match for "run a federated round from one Python call" -- but simulator mode runs the server and all clients as in-process threads over in-memory queues, not real network sockets, so even on a supported OS this configuration produces no capturable traffic at all. Real traffic needs NVFlare's separate POC/production deployment mode (`nvflare provision` + a real `start.sh` process per site), which is out of scope here. Unlike FedLab/ExecuTorch/TVM, this one wouldn't serve this project's purpose even if it ran successfully in its current form. Its generated client script was updated to call the shared loader too, but whether NVFlare's `ScriptRunner(launch_external_process=False)` actually makes this project's modules importable inside that script is unverified, for the same pre-existing import failure.
+- **Distributed training**: PyTorch `DistributedDataParallel` (same combo, multi-process gradient sync) -- verified end-to-end with a real 2-process coordinator+worker run on `dataset: Synthetic`, both ranks completing cleanly with correct ground truth.
+- **Distributed training**: FairScale (`OSS` optimizer-state sharding + `ShardedDataParallel`, ZeRO stage 1) -- layers on the exact same gloo/TCP process group as the DDP adapter (confirmed directly from `OSS`/`ShardedDataParallel`'s real constructor signatures). Originally only spot-verified via an isolated two-rank synthetic-data script, not through `main.py`, because CIFAR10's ~170MB train split downloaded too slowly in this environment (~40 min). Switching to `dataset: Synthetic` removes that slowness entirely (no download at all) -- this is now the first real, full `main.py` run of this adapter, both ranks completing cleanly with correct ground truth.
 - **Transport**: TCP and TLS (self-signed dev cert auto-generated), plus HTTP -- a plain `http.server`/`http.client` implementation of the same `Transport` interface, standard library only. HTTP is request/response, not the persistent bidirectional stream TCP/TLS use, so the server side bridges this project's synchronous send()/recv() calls onto it with a small queue: the HTTP handler (its own thread per request) hands each request body to the main thread via one queue and blocks on a second queue for the response bytes to write back -- correct here because exactly one request is ever in flight (this project's client always waits for the full response before sending the next). Verified end-to-end including a real client/server roundtrip with correct ground truth (`"transport": "HTTP"`).
 - **Transport**: gRPC, the last transport stub -- turned out not to need the protobuf schema its old docstring assumed. gRPC's low-level Python API supports raw-bytes unary-unary calls directly (`grpc.unary_unary_rpc_method_handler` + `grpc.method_handlers_generic_handler` with identity serializers), no `.proto` file or generated stub code anywhere -- confirmed directly with a minimal roundtrip before writing the real adapter. Bridges gRPC's single-call request/response shape onto this project's split send()/recv() interface the same way the HTTP transport already bridges HTTP's: a small queue pair on the server side, a stash-the-response pattern on the client side. Verified end-to-end with a real two-process client/server run (`python main.py --config ... --role server` / `--role client`, real ResNet18/CIFAR10, `capture: false`) -- 3/3 requests served correctly, ground truth correctly recorded `"transport": "gRPC"`.
 
@@ -338,36 +339,35 @@ Framework -> Family -> Architecture -> Application -> Dataset):
   option, since `validate()` treats all five as optional
   (`required=False`).
 - **Paradigm -> Framework/Architecture/Dataset**: picking
-  `federated_learning` or `distributed_training` now locks Framework to
-  `PyTorch`, Architecture to `ResNet18`/`ResNet50`/`MobileNetV2`/`ViT`,
-  and Dataset to `CIFAR10`, with an explanatory note printed up front.
-  This isn't a metadata-driven narrowing like the others above -- it's a
-  real implementation constraint of every `fl_frameworks/*.py`/
-  `distributed_frameworks/*.py` adapter: confirmed directly (grepped
-  every adapter's data-loading code) that none of them read
-  `config.dataset` at all, they all hardcode
-  `torchvision.datasets.CIFAR10` regardless of what's selected, and their
-  training loops call `.state_dict()`/`.parameters()`/`.train()` directly
-  on whatever `framework.load_model()` returns -- only a plain PyTorch
-  `nn.Module` supports that (confirmed: `frameworks/openvino_adapter.py`'s
-  `load_model()` returns an `OpenVINOModel` wrapper with none of those
-  methods). Before this fix, walking `--interactive` with
-  `paradigm: federated_learning` and, say, `dataset: Synthetic` would
-  validate and run "successfully" while silently mislabeling ground truth
-  -- the captured traffic would actually be CIFAR10 training traffic,
-  but `ground_truth.json` would record `"dataset": "Synthetic"`.
-  `core/config.py`'s `validate()` now enforces this same constraint
-  directly (`FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES`/
-  `FL_DISTRIBUTED_DATASET`/`FL_DISTRIBUTED_FRAMEWORK`, the single source
-  of truth both `--interactive` and `validate()` share), so a
-  hand-written `config.yaml` hitting this same mismatch is now rejected
-  with a clear, specific error instead of silently mislabeling ground
-  truth or crashing deep inside the adapter -- closing the gap this
-  section originally flagged as unprotected. This remains a real
-  implementation constraint of the FL/distributed adapters themselves,
-  not something `validate()` can paper over -- generalizing them to read
-  `config.dataset` for real (rather than just rejecting mismatches early)
-  is a much larger undertaking left for later.
+  `federated_learning` or `distributed_training` locks Framework to
+  `PyTorch` and Architecture to `ResNet18`/`ResNet50`/`MobileNetV2`/`ViT`,
+  with an explanatory note printed up front -- a real implementation
+  constraint (their training loops call
+  `.state_dict()`/`.parameters()`/`.train()` directly on whatever
+  `framework.load_model()` returns, which only a plain PyTorch `nn.Module`
+  supports, and expect `num_classes=10` classification output), not a
+  metadata-driven narrowing like the others above. **Dataset is not
+  locked to a single value** -- `CIFAR10` and `Synthetic` are both real,
+  independently selectable choices: `core/training_data.py`'s
+  `build_classification_dataset()` loads whichever one was actually
+  picked via the same `DATASETS`/`APPLICATIONS` registry
+  `paradigm=inference` already uses, so every FL/distributed adapter
+  genuinely trains on what `config.dataset` says rather than silently
+  training on CIFAR10 regardless (the bug this constraint was originally
+  built to prevent -- see the Federated learning/distributed training
+  bullets above for the fix). `core/config.py`'s `validate()` enforces
+  the same Framework/Architecture/Dataset constraints directly
+  (`FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES`/
+  `FL_DISTRIBUTED_COMPATIBLE_DATASETS`/`FL_DISTRIBUTED_FRAMEWORK`, the
+  single source of truth both `--interactive` and `validate()` share), so
+  a hand-written `config.yaml` picking e.g. `dataset: ImageNet` (1000
+  classes, incompatible with these architectures'
+  `num_classes=10`) is rejected with a clear, specific error rather than
+  crashing deep inside the adapter. Generalizing beyond Image
+  Classification to other applications remains out of scope -- see
+  `core/training_data.py`'s docstring for why (`Dataset.samples()`'s
+  label is a string for inference-time logging only, no numeric-label or
+  loss-function concept exists anywhere in the `Application` interface).
 
 Verified directly by walking all three (Jetson/Ubuntu/iPhone device
 choices) through the real prompt and confirming the framework lists
@@ -378,11 +378,13 @@ appears (offering ESPnet/SpeechBrain/Whisper, correctly marking
 Kaldi/Coqui STT/NeMo `[stub]`) and correctly stays silent for
 Image Classification/ResNet18 (no applicable sub-framework), a
 `federated_learning` walk-through confirming Framework/Family/
-Architecture/Dataset all lock down correctly (down to a real, successful
-run through to `Experiment.run()` with `fl_framework: Flower`) and that
-plain `inference` runs are completely unaffected (no note printed, full
-framework list still offered), plus a full run through to
-`Experiment.run()` with no compatibility error at the end for each.
+Architecture lock down correctly and Dataset now offers a real 2-option
+`CIFAR10`/`Synthetic` choice (down to real, successful `Experiment.run()`
+calls with `fl_framework: Flower` for both datasets, correct
+`ground_truth.json` for each) and that plain `inference` runs are
+completely unaffected (no note printed, full framework list still
+offered), plus a full run through to `Experiment.run()` with no
+compatibility error at the end for each.
 
 ## Output
 

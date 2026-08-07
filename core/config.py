@@ -25,18 +25,31 @@ from core.registry import (
 VALID_PARADIGMS = ("inference", "federated_learning", "distributed_training")
 VALID_ROLES = ("client", "server", "standalone")
 
-# Every fl_frameworks/*.py and distributed_frameworks/*.py adapter
-# hardcodes its own data loader to torchvision.datasets.CIFAR10 -- none of
-# them read config.dataset at all (confirmed directly: grepped every
-# adapter's data-loading code) -- and each one's training loop calls
-# `model.state_dict()`/`.parameters()`/`.train()` directly on whatever
-# `framework.load_model()` returns, which only a plain PyTorch nn.Module
-# supports (confirmed: frameworks/openvino_adapter.py's load_model()
-# returns an OpenVINOModel wrapper with none of those methods). A single
-# source of truth here, reused by both this module's validate() and
-# main.py's --interactive locking, so the two can't drift apart.
+# Every fl_frameworks/*.py and distributed_frameworks/*.py adapter's
+# training loop calls `model.state_dict()`/`.parameters()`/`.train()`
+# directly on whatever `framework.load_model()` returns, which only a
+# plain PyTorch nn.Module supports (confirmed:
+# frameworks/openvino_adapter.py's load_model() returns an OpenVINOModel
+# wrapper with none of those methods) -- so framework is locked to
+# PyTorch. Architecture is locked to the four num_classes=10 image
+# classifiers, since every adapter's loss is CrossEntropyLoss over a fixed
+# 10-class output. Dataset is locked to datasets that actually produce (a)
+# real image samples matching Image Classification's preprocess() and (b)
+# no more than 10 distinct labels -- CIFAR10 (10 real classes) and
+# Synthetic (`f"synthetic-{i % 10}"`, confirmed directly in
+# datasets/synthetic.py) both qualify; ImageNet (1000 classes) doesn't,
+# without also changing how the architectures are constructed.
+#
+# core/training_data.py's build_classification_dataset() is what actually
+# loads whichever of these datasets is selected via the DATASETS/
+# APPLICATIONS registries (the same abstraction paradigm=inference uses),
+# instead of every adapter hardcoding its own torchvision.datasets.CIFAR10
+# call the way they all used to.
+#
+# A single source of truth here, reused by both this module's validate()
+# and main.py's --interactive locking, so the two can't drift apart.
 FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES = ("ResNet18", "ResNet50", "MobileNetV2", "ViT")
-FL_DISTRIBUTED_DATASET = "CIFAR10"
+FL_DISTRIBUTED_COMPATIBLE_DATASETS = ("CIFAR10", "Synthetic")
 FL_DISTRIBUTED_FRAMEWORK = "PyTorch"
 
 
@@ -139,13 +152,13 @@ class ExperimentConfig:
                     f"distributed_frameworks adapter's training loop expects CIFAR10-shaped "
                     f"10-class classification output, which '{self.architecture}' doesn't produce."
                 )
-            if (self.dataset or "").lower() != FL_DISTRIBUTED_DATASET.lower():
+            if (self.dataset or "") not in FL_DISTRIBUTED_COMPATIBLE_DATASETS:
                 errors.append(
-                    f"paradigm '{self.paradigm}' only works with dataset "
-                    f"'{FL_DISTRIBUTED_DATASET}' today -- every fl_frameworks/distributed_frameworks "
-                    f"adapter hardcodes its own CIFAR10 data loader and never reads config.dataset, "
-                    f"so setting dataset: '{self.dataset}' would silently mislabel ground truth "
-                    f"rather than actually being used."
+                    f"paradigm '{self.paradigm}' only works with dataset(s) "
+                    f"{FL_DISTRIBUTED_COMPATIBLE_DATASETS} today -- every fl_frameworks/"
+                    f"distributed_frameworks adapter's training loop expects Image "
+                    f"Classification-shaped input with no more than 10 distinct labels "
+                    f"(num_classes=10), which '{self.dataset}' doesn't produce."
                 )
 
         application_lower = (self.application or "").lower()
