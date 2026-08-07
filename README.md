@@ -237,6 +237,31 @@ python main.py --list          # every registry entry, implemented vs. stub
 python main.py --interactive   # guided step-by-step setup (Paradigm -> ... -> Transport)
 ```
 
+`--interactive` narrows each step's choices to what's actually compatible
+with what you already picked, using the same metadata `core/config.py`'s
+`validate()` checks (so nothing selectable in the prompt can fail
+validation for a compatibility reason at the end):
+
+- **Device -> Framework**: only frameworks whose `platforms=[...]`
+  registration metadata overlaps the device's platform tags are offered
+  (e.g. picking `iphone` only offers CoreML/ExecuTorch/MediaPipe/MNN/NCNN/
+  ONNX Runtime Mobile/PyTorch Mobile/TensorFlow Lite -- not PyTorch/
+  TensorFlow/OpenVINO, which don't run natively on iOS). Jetson boards
+  carry an extra `jetson` platform tag beyond their `linux` one (see
+  `core/devices.py`), so TensorRT/DeepStream/Edge Impulse only show up for
+  Jetson devices, not Ubuntu.
+- **Framework -> Family**: only families with at least one architecture
+  compatible with the chosen framework are offered (e.g. picking
+  `TensorRT` only offers `CNN`, since only ResNet18/MobileNetV2 declare
+  TensorRT support today -- picking `PyTorch` offers all 6 families).
+- **Family + Framework -> Architecture**: unchanged from before, already
+  filtered by both.
+
+Verified directly by walking all three (Jetson/Ubuntu/iPhone device
+choices) through the real prompt and confirming the framework lists
+narrow correctly, plus a full run through to `Experiment.run()` with no
+compatibility error at the end.
+
 ## Output
 
 Each run writes to `experiments/results/<experiment_id>/`:

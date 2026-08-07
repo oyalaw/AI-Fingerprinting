@@ -76,23 +76,57 @@ def _prompt_registry_choice(label, registry, filter_fn=None):
         print("Invalid choice, try again.")
 
 
+def _architecture_compatible_frameworks(entry):
+    """The set of framework names (lowercased) an architecture entry can
+    run under: its own `framework` plus anything in `also_supports`. Empty
+    set means "no restriction declared" -- treat as compatible with any
+    framework, same convention `_architecture_matches` below already uses."""
+    arch_framework = entry.meta.get("framework")
+    also_supports = entry.meta.get("also_supports") or []
+    compatible = {arch_framework, *also_supports} - {None}
+    return {f.lower() for f in compatible}
+
+
 def cmd_interactive(_args):
     discover_all()
     print("=== AI Fingerprinting Testbed: guided experiment setup ===")
     print("Every option below is real and selectable; [stub] means it's registered")
-    print("but not yet implemented -- picking one will fail validation at the end.\n")
+    print("but not yet implemented -- picking one will fail validation at the end.")
+    print("Each step's choices are narrowed to what's actually compatible with what")
+    print("you already picked (device -> framework -> family -> architecture).\n")
 
     paradigm = _prompt_from_options("Paradigm", list(VALID_PARADIGMS))
     role = _prompt_from_options("Role", list(VALID_ROLES))
+
     device = _prompt_registry_choice("Device", DEVICES)
-    framework = _prompt_registry_choice("Framework", FRAMEWORKS)
-    family = _prompt_registry_choice("Family", FAMILIES)
+    device_tags = {t.lower() for t in DEVICES.get(device).meta.get("platform_tags") or ()}
+
+    def _framework_matches_device(entry):
+        platforms = entry.meta.get("platforms")
+        if not platforms:
+            return True  # no platform restriction declared -- assume compatible
+        return bool(device_tags & {p.lower() for p in platforms})
+
+    framework = _prompt_registry_choice("Framework", FRAMEWORKS, filter_fn=_framework_matches_device)
+
+    def _family_has_compatible_architecture(family_entry):
+        family_name = family_entry.name.lower()
+        for arch_entry in ARCHITECTURES.list():
+            arch_family = (arch_entry.meta.get("family") or "").lower()
+            if arch_family and arch_family != family_name:
+                continue
+            compatible = _architecture_compatible_frameworks(arch_entry)
+            if not compatible or framework.lower() in compatible:
+                return True
+        return False
+
+    family = _prompt_registry_choice("Family", FAMILIES, filter_fn=_family_has_compatible_architecture)
+
     def _architecture_matches(entry):
         arch_family = entry.meta.get("family")
-        arch_framework = entry.meta.get("framework")
-        compatible = {arch_framework, *entry.meta.get("also_supports", [])} - {None}
+        compatible = _architecture_compatible_frameworks(entry)
         family_ok = not arch_family or arch_family.lower() == family.lower()
-        framework_ok = not compatible or framework.lower() in {f.lower() for f in compatible}
+        framework_ok = not compatible or framework.lower() in compatible
         return family_ok and framework_ok
 
     architecture = _prompt_registry_choice(
