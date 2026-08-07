@@ -524,6 +524,28 @@ experiments:
     transport: TCP
     device: jetson_orin_nano
 
+  # Second architecture sharing Object Detection with YOLOv8, a genuinely
+  # different two-stage (Faster R-CNN) detector design -- a new
+  # architecture entry, not a cv_framework dispatch under YOLOv8. Real
+  # random-init GeneralizedRCNN (ResNet18 backbone) built directly via
+  # detectron2.modeling.build_model, no model_zoo config/checkpoint
+  # needed. Its own RPN+ROI heads+NMS already decode detections inside
+  # the model, packed into a fixed (1, 100, 6) padded tensor for this
+  # project's wire protocol -- see architectures/detectron2.py's
+  # docstring. Needed a real C/C++ compiler to install (never published
+  # to PyPI; source build compiles custom ops CPU-only here, no CUDA
+  # toolkit needed) -- same prerequisite as speech_framework: ESPnet and
+  # llm_framework: llama.cpp above. Verified end-to-end including an
+  # exact serialize/deserialize roundtrip.
+  - name: inference_pytorch_detectron2_synthetic
+    paradigm: inference
+    framework: PyTorch
+    family: CNN
+    architecture: Detectron2
+    application: Object Detection
+    dataset: Synthetic
+    transport: TCP
+
   # Last dataset stub. Streams the official 6.3GB val tar via tarfile's
   # streaming mode rather than downloading it, stopping once enough
   # images are collected -- confirmed directly this only transfers the

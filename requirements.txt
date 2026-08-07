@@ -63,6 +63,17 @@ llama-cpp-python
 # speech_frameworks/espnet_adapter.py's docstring.
 espnet
 
+# Detectron2: a new architecture entry (architectures/detectron2.py),
+# real random-init GeneralizedRCNN (Faster R-CNN, ResNet18 backbone) built
+# directly via detectron2.modeling.build_model -- no model_zoo config/
+# checkpoint needed. Never published to PyPI; install from source:
+#   pip install git+https://github.com/facebookresearch/detectron2.git
+# Needs a real C/C++ compiler (this project's own dev machine needed
+# Visual Studio Build Tools) to compile its custom ops -- CPU-only build
+# works fine without a CUDA toolkit, see architectures/detectron2.py's
+# docstring.
+detectron2 @ git+https://github.com/facebookresearch/detectron2.git
+
 # Federated learning vertical slice (Flower)
 flwr
 
