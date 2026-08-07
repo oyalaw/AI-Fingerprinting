@@ -33,5 +33,10 @@ def build(framework_adapter, config):
 
 
 ARCHITECTURES.register(
-    "ViT", implemented=True, family="Transformer", framework="PyTorch", input_shape=(3, 32, 32)
+    "ViT",
+    implemented=True,
+    family="Transformer",
+    framework="PyTorch",
+    application="Image Classification",
+    input_shape=(3, 32, 32),
 )(build)

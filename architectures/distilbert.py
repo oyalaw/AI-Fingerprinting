@@ -47,5 +47,10 @@ def build(framework_adapter, config):
 
 
 ARCHITECTURES.register(
-    "DistilBERT", implemented=True, family="Transformer", framework="PyTorch", input_shape=(3, 32)
+    "DistilBERT",
+    implemented=True,
+    family="Transformer",
+    framework="PyTorch",
+    application="Sentiment Analysis",
+    input_shape=(3, 32),
 )(build)

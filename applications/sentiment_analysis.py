@@ -41,4 +41,6 @@ class SentimentAnalysis(Application):
         return _LABELS[idx]
 
 
-APPLICATIONS.register("Sentiment Analysis", implemented=True)(SentimentAnalysis)
+APPLICATIONS.register(
+    "Sentiment Analysis", implemented=True, datasets=["IMDB", "SST2"]
+)(SentimentAnalysis)

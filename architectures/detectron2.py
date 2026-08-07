@@ -109,5 +109,10 @@ def build(framework_adapter, config):
 
 
 ARCHITECTURES.register(
-    "Detectron2", implemented=True, family="CNN", framework="PyTorch", input_shape=(3, 640, 640)
+    "Detectron2",
+    implemented=True,
+    family="CNN",
+    framework="PyTorch",
+    application="Object Detection",
+    input_shape=(3, 640, 640),
 )(build)

@@ -98,5 +98,10 @@ def build(framework_adapter, config):
 
 
 ARCHITECTURES.register(
-    "SAM", implemented=True, family="Transformer", framework="PyTorch", input_shape=(3, 1024, 1024)
+    "SAM",
+    implemented=True,
+    family="Transformer",
+    framework="PyTorch",
+    application="Segmentation",
+    input_shape=(3, 1024, 1024),
 )(build)

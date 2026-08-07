@@ -28,5 +28,6 @@ ARCHITECTURES.register(
     family="CNN",
     framework="PyTorch",
     also_supports=["OpenVINO"],
+    application="Image Classification",
     input_shape=(3, 32, 32),
 )(build)

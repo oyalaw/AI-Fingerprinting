@@ -32,5 +32,10 @@ def build(framework_adapter, config):
 
 
 ARCHITECTURES.register(
-    "LSTM", implemented=True, family="RNN", framework="PyTorch", input_shape=(128, 9)
+    "LSTM",
+    implemented=True,
+    family="RNN",
+    framework="PyTorch",
+    application="Activity Recognition",
+    input_shape=(128, 9),
 )(build)

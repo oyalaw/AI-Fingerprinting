@@ -25,4 +25,6 @@ class ActivityRecognition(Application):
         return _ACTIVITY_LABELS[idx]
 
 
-APPLICATIONS.register("Activity Recognition", implemented=True)(ActivityRecognition)
+APPLICATIONS.register(
+    "Activity Recognition", implemented=True, datasets=["UCI HAR"]
+)(ActivityRecognition)

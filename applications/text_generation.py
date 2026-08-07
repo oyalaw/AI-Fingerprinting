@@ -18,6 +18,13 @@ proactively applying the exact lesson learned the hard way in
 applications/speech_recognition.py: a random-init model's decoded output
 is unconstrained token soup that can crash console logging with
 UnicodeEncodeError on this Windows machine (cp1252).
+
+Registered `datasets=["IMDB"]` for `--interactive`'s filtering -- narrower
+than what preprocess() would technically tolerate (`str(raw_sample)` on
+anything non-string still produces *a* prompt without crashing), but IMDB
+is the only dataset this project actually uses here, since it's the only
+one with real prose text worth conditioning generation on -- SST2's short
+single-sentence fragments or an image dataset's array wouldn't be.
 """
 import torch
 
@@ -52,4 +59,4 @@ class TextGeneration(Application):
         return text.encode("ascii", errors="replace").decode("ascii")
 
 
-APPLICATIONS.register("Text Generation", implemented=True)(TextGeneration)
+APPLICATIONS.register("Text Generation", implemented=True, datasets=["IMDB"])(TextGeneration)

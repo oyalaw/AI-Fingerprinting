@@ -13,5 +13,10 @@ def build(framework_adapter, config):
 
 
 ARCHITECTURES.register(
-    "ResNet50", implemented=True, family="CNN", framework="PyTorch", input_shape=(3, 32, 32)
+    "ResNet50",
+    implemented=True,
+    family="CNN",
+    framework="PyTorch",
+    application="Image Classification",
+    input_shape=(3, 32, 32),
 )(build)

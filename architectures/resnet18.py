@@ -55,5 +55,6 @@ ARCHITECTURES.register(
         "MNN",
         "NNAPI",
     ],
+    application="Image Classification",
     input_shape=(3, 32, 32),
 )(build)

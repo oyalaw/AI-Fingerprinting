@@ -40,4 +40,6 @@ class ImageReconstruction(Application):
         }
 
 
-APPLICATIONS.register("Image Reconstruction", implemented=True)(ImageReconstruction)
+APPLICATIONS.register(
+    "Image Reconstruction", implemented=True, datasets=["CIFAR10"]
+)(ImageReconstruction)

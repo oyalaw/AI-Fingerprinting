@@ -27,5 +27,10 @@ def build(framework_adapter, config):
 
 
 ARCHITECTURES.register(
-    "GRU", implemented=True, family="RNN", framework="PyTorch", input_shape=(128, 9)
+    "GRU",
+    implemented=True,
+    family="RNN",
+    framework="PyTorch",
+    application="Activity Recognition",
+    input_shape=(128, 9),
 )(build)

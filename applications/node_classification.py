@@ -37,4 +37,6 @@ class NodeClassification(Application):
         return [_FACTION_LABELS[idx] for idx in predicted_indices]
 
 
-APPLICATIONS.register("Node Classification", implemented=True)(NodeClassification)
+APPLICATIONS.register(
+    "Node Classification", implemented=True, datasets=["Karate Club"]
+)(NodeClassification)

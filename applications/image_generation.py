@@ -9,6 +9,13 @@ for the transductive Node Classification application.
 postprocess summarizes the generated image rather than returning the full
 tensor, consistent with every other application here returning a compact
 result rather than raw model output.
+
+Registered `datasets=["Synthetic"]` for `--interactive`'s filtering --
+narrower than what preprocess() would technically tolerate (it ignores
+`raw_sample` entirely, discarding whatever any dataset provides), but
+`Synthetic` is the only one this project actually pairs it with, the same
+reasoning applications/speech_recognition.py's docstring gives for its
+own datasets list.
 """
 import torch
 
@@ -29,4 +36,4 @@ class ImageGeneration(Application):
         }
 
 
-APPLICATIONS.register("Image Generation", implemented=True)(ImageGeneration)
+APPLICATIONS.register("Image Generation", implemented=True, datasets=["Synthetic"])(ImageGeneration)

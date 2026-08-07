@@ -238,9 +238,8 @@ python main.py --interactive   # guided step-by-step setup (Paradigm -> ... -> T
 ```
 
 `--interactive` narrows each step's choices to what's actually compatible
-with what you already picked, using the same metadata `core/config.py`'s
-`validate()` checks (so nothing selectable in the prompt can fail
-validation for a compatibility reason at the end):
+with what you already picked, all the way down the chain (Device ->
+Framework -> Family -> Architecture -> Application -> Dataset):
 
 - **Device -> Framework**: only frameworks whose `platforms=[...]`
   registration metadata overlaps the device's platform tags are offered
@@ -254,12 +253,36 @@ validation for a compatibility reason at the end):
   compatible with the chosen framework are offered (e.g. picking
   `TensorRT` only offers `CNN`, since only ResNet18/MobileNetV2 declare
   TensorRT support today -- picking `PyTorch` offers all 6 families).
-- **Family + Framework -> Architecture**: unchanged from before, already
-  filtered by both.
+- **Family + Framework -> Architecture**: filtered by both -- this part
+  uses the same `also_supports`/`framework`/`family` metadata
+  `core/config.py`'s `validate()` also checks, so nothing selectable here
+  can fail validation for a device/framework/family/architecture
+  compatibility reason at the end.
+- **Architecture -> Application**: each architecture now declares its own
+  `application=` metadata (e.g. `architectures/gcn.py` ->
+  `"Node Classification"`), so picking e.g. `BERT` only offers `Sentiment
+  Analysis`, not all 10 applications.
+- **Application -> Dataset**: each application now declares a `datasets=`
+  list of what it's actually been paired with (e.g. `Sentiment Analysis`
+  -> `["IMDB", "SST2"]`, `Node Classification` -> `["Karate Club"]`).
+  A few of these are deliberately narrower than what the application code
+  would technically tolerate -- Speech Recognition/Image Generation
+  discard the dataset sample entirely and synthesize their own input, so
+  they wouldn't literally crash on any dataset, but only `Synthetic` is
+  ever actually used for them anywhere in this project (see each
+  module's own docstring for the reasoning, the same "only claim what's
+  verified" discipline `architectures/mobilenetv2.py`'s `also_supports`
+  uses). Application/Dataset compatibility isn't enforced by
+  `core/config.py`'s `validate()` (a hand-written `config.yaml` can still
+  set an unpaired combo -- the application code just does something
+  nonsensical or crashes, it isn't cross-checked), only curated in the
+  interactive prompt.
 
 Verified directly by walking all three (Jetson/Ubuntu/iPhone device
 choices) through the real prompt and confirming the framework lists
-narrow correctly, plus a full run through to `Experiment.run()` with no
+narrow correctly, a GNN/GCN/Node Classification walk-through confirming
+the new architecture->application->dataset narrowing, plus a full run
+through to `Experiment.run()` with no
 compatibility error at the end.
 
 ## Output

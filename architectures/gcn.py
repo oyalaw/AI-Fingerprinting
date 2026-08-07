@@ -54,5 +54,10 @@ def build(framework_adapter, config):
 
 
 ARCHITECTURES.register(
-    "GCN", implemented=True, family="GNN", framework="PyTorch", input_shape=(2, 34, 34)
+    "GCN",
+    implemented=True,
+    family="GNN",
+    framework="PyTorch",
+    application="Node Classification",
+    input_shape=(2, 34, 34),
 )(build)

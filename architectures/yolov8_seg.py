@@ -51,5 +51,10 @@ def build(framework_adapter, config):
 
 
 ARCHITECTURES.register(
-    "YOLOv8-Seg", implemented=True, family="CNN", framework="PyTorch", input_shape=(3, 640, 640)
+    "YOLOv8-Seg",
+    implemented=True,
+    family="CNN",
+    framework="PyTorch",
+    application="Segmentation",
+    input_shape=(3, 640, 640),
 )(build)

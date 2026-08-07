@@ -42,5 +42,10 @@ def build(framework_adapter, config):
 
 
 ARCHITECTURES.register(
-    "Autoencoder", implemented=True, family="Autoencoder", framework="PyTorch", input_shape=(3, 32, 32)
+    "Autoencoder",
+    implemented=True,
+    family="Autoencoder",
+    framework="PyTorch",
+    application="Image Reconstruction",
+    input_shape=(3, 32, 32),
 )(build)

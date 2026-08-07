@@ -108,4 +108,6 @@ class ObjectDetection(Application):
         return results
 
 
-APPLICATIONS.register("Object Detection", implemented=True)(ObjectDetection)
+APPLICATIONS.register(
+    "Object Detection", implemented=True, datasets=["Synthetic", "COCO"]
+)(ObjectDetection)

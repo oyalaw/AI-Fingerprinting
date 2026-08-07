@@ -101,5 +101,10 @@ def build(framework_adapter, config):
 
 
 ARCHITECTURES.register(
-    "DDPM", implemented=True, family="Diffusion", framework="PyTorch", input_shape=(3, 32, 32)
+    "DDPM",
+    implemented=True,
+    family="Diffusion",
+    framework="PyTorch",
+    application="Image Generation",
+    input_shape=(3, 32, 32),
 )(build)

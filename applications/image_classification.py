@@ -21,4 +21,6 @@ class ImageClassification(Application):
         return int(torch.argmax(probs, dim=-1).item())
 
 
-APPLICATIONS.register("Image Classification", implemented=True)(ImageClassification)
+APPLICATIONS.register(
+    "Image Classification", implemented=True, datasets=["CIFAR10", "Synthetic", "ImageNet"]
+)(ImageClassification)

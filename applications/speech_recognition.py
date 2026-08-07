@@ -17,6 +17,14 @@ project's own logging with UnicodeEncodeError on this Windows console
 straight to stdout, so an unsanitized result would non-deterministically
 crash the client depending on what the untrained model happens to decode
 to on a given run, not a cosmetic concern.
+
+Registered `datasets=["Synthetic"]` for `--interactive`'s filtering --
+narrower than what the code would technically tolerate (preprocess()
+ignores `raw_sample` entirely, so it wouldn't crash on any dataset), but
+`Synthetic` is the only one this project actually pairs it with anywhere
+(experiment_matrix.yaml, README.md); offering e.g. `CIFAR10` here would
+be a real, working combo that's also a nonsensical one to label "speech
+recognition" traffic.
 """
 import numpy as np
 import torch
@@ -48,4 +56,6 @@ class SpeechRecognition(Application):
         return text.encode("ascii", errors="replace").decode("ascii")
 
 
-APPLICATIONS.register("Speech Recognition", implemented=True)(SpeechRecognition)
+APPLICATIONS.register(
+    "Speech Recognition", implemented=True, datasets=["Synthetic"]
+)(SpeechRecognition)

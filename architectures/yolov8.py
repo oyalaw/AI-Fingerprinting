@@ -43,5 +43,10 @@ def build(framework_adapter, config):
 
 
 ARCHITECTURES.register(
-    "YOLOv8", implemented=True, family="CNN", framework="PyTorch", input_shape=(3, 640, 640)
+    "YOLOv8",
+    implemented=True,
+    family="CNN",
+    framework="PyTorch",
+    application="Object Detection",
+    input_shape=(3, 640, 640),
 )(build)

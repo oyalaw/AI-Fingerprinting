@@ -55,5 +55,10 @@ def build(framework_adapter, config):
 
 
 ARCHITECTURES.register(
-    "BERT", implemented=True, family="Transformer", framework="PyTorch", input_shape=(3, 32)
+    "BERT",
+    implemented=True,
+    family="Transformer",
+    framework="PyTorch",
+    application="Sentiment Analysis",
+    input_shape=(3, 32),
 )(build)

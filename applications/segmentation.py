@@ -35,6 +35,15 @@ post-decode step (`torch.nn.functional.interpolate` back up to the
 1024x1024 SAM operates at, then a sigmoid + 0.5 threshold -- the same
 mask-decode SAM's own `SamPredictor.predict` performs after calling the
 mask decoder, confirmed directly against its source).
+
+Registered `datasets=["Synthetic"]` for `--interactive`'s filtering.
+Unlike Speech Recognition/Image Generation above, preprocess() here
+genuinely does use the dataset's image content (same generic HWC-array
+handling as applications/object_detection.py's), so CIFAR10/COCO/
+ImageNet would likely work too -- narrowed to `Synthetic` because that's
+the only one ever actually run against this application (both YOLOv8-Seg
+and SAM's experiment_matrix.yaml entries use it), not because anything
+else would technically fail.
 """
 import numpy as np
 import torch
@@ -135,4 +144,4 @@ class Segmentation(Application):
         }
 
 
-APPLICATIONS.register("Segmentation", implemented=True)(Segmentation)
+APPLICATIONS.register("Segmentation", implemented=True, datasets=["Synthetic"])(Segmentation)

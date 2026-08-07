@@ -87,5 +87,10 @@ def build(framework_adapter, config):
 
 
 ARCHITECTURES.register(
-    "GPT-2", implemented=True, family="Transformer", framework="PyTorch", input_shape=(2, 16)
+    "GPT-2",
+    implemented=True,
+    family="Transformer",
+    framework="PyTorch",
+    application="Text Generation",
+    input_shape=(2, 16),
 )(build)

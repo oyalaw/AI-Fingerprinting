@@ -93,7 +93,8 @@ def cmd_interactive(_args):
     print("Every option below is real and selectable; [stub] means it's registered")
     print("but not yet implemented -- picking one will fail validation at the end.")
     print("Each step's choices are narrowed to what's actually compatible with what")
-    print("you already picked (device -> framework -> family -> architecture).\n")
+    print("you already picked (device -> framework -> family -> architecture ->")
+    print("application -> dataset).\n")
 
     paradigm = _prompt_from_options("Paradigm", list(VALID_PARADIGMS))
     role = _prompt_from_options("Role", list(VALID_ROLES))
@@ -134,8 +135,24 @@ def cmd_interactive(_args):
         ARCHITECTURES,
         filter_fn=_architecture_matches,
     )
-    application = _prompt_registry_choice("Application", APPLICATIONS)
-    dataset = _prompt_registry_choice("Dataset", DATASETS)
+
+    arch_application = ARCHITECTURES.get(architecture).meta.get("application")
+
+    def _application_matches_architecture(entry):
+        return not arch_application or entry.name.lower() == arch_application.lower()
+
+    application = _prompt_registry_choice(
+        "Application", APPLICATIONS, filter_fn=_application_matches_architecture
+    )
+
+    application_datasets = {
+        d.lower() for d in (APPLICATIONS.get(application).meta.get("datasets") or ())
+    }
+
+    def _dataset_matches_application(entry):
+        return not application_datasets or entry.name.lower() in application_datasets
+
+    dataset = _prompt_registry_choice("Dataset", DATASETS, filter_fn=_dataset_matches_application)
     transport = _prompt_registry_choice("Transport", TRANSPORTS)
 
     kwargs = dict(

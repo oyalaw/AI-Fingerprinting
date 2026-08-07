@@ -84,5 +84,10 @@ def build(framework_adapter, config):
 
 
 ARCHITECTURES.register(
-    "Whisper", implemented=True, family="Transformer", framework="PyTorch", input_shape=(80, 3000)
+    "Whisper",
+    implemented=True,
+    family="Transformer",
+    framework="PyTorch",
+    application="Speech Recognition",
+    input_shape=(80, 3000),
 )(build)
