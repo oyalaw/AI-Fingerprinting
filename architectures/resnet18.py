@@ -18,6 +18,18 @@ hardware -- see frameworks/mps_backend_adapter.py. See also
 core/config.py's compatibility check and each frameworks/*_adapter.py
 module's own docstring for which of these are execution-verified here
 versus written-to-docs only.
+
+Edge Impulse is listed here too, for a different reason than the
+converters above: it has no local conversion path for this (or any)
+PyTorch architecture at all (models come from Edge Impulse Studio, cloud,
+account required), so `frameworks/edge_impulse_adapter.py`'s
+`load_model()` always raises a clear, explanatory `RuntimeError` for
+ResNet18 specifically -- but that error needs to actually be reached to
+be useful. Leaving Edge Impulse out of `also_supports` would make
+`core/config.py`'s `validate()` reject this combo one step earlier with
+its own generic "architecture doesn't support this framework" message,
+burying the more informative one -- listed here so `validate()` passes
+and the real, intentional error surfaces where it's supposed to.
 """
 from core.registry import ARCHITECTURES
 
@@ -54,6 +66,7 @@ ARCHITECTURES.register(
         "DeepStream",
         "MNN",
         "NNAPI",
+        "Edge Impulse",
     ],
     application="Image Classification",
     input_shape=(3, 32, 32),

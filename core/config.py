@@ -25,6 +25,20 @@ from core.registry import (
 VALID_PARADIGMS = ("inference", "federated_learning", "distributed_training")
 VALID_ROLES = ("client", "server", "standalone")
 
+# Every fl_frameworks/*.py and distributed_frameworks/*.py adapter
+# hardcodes its own data loader to torchvision.datasets.CIFAR10 -- none of
+# them read config.dataset at all (confirmed directly: grepped every
+# adapter's data-loading code) -- and each one's training loop calls
+# `model.state_dict()`/`.parameters()`/`.train()` directly on whatever
+# `framework.load_model()` returns, which only a plain PyTorch nn.Module
+# supports (confirmed: frameworks/openvino_adapter.py's load_model()
+# returns an OpenVINOModel wrapper with none of those methods). A single
+# source of truth here, reused by both this module's validate() and
+# main.py's --interactive locking, so the two can't drift apart.
+FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES = ("ResNet18", "ResNet50", "MobileNetV2", "ViT")
+FL_DISTRIBUTED_DATASET = "CIFAR10"
+FL_DISTRIBUTED_FRAMEWORK = "PyTorch"
+
 
 @dataclasses.dataclass
 class ExperimentConfig:
@@ -101,6 +115,39 @@ class ExperimentConfig:
             check(FL_FRAMEWORKS, self.fl_framework, "fl_framework")
         if self.paradigm == "distributed_training":
             check(DISTRIBUTED_FRAMEWORKS, self.distributed_framework, "distributed_framework")
+
+        if self.paradigm in ("federated_learning", "distributed_training"):
+            # Real implementation constraint, not a registry-compatibility
+            # one -- see FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES's comment
+            # above for why. Framework/dataset mismatches here would
+            # otherwise either crash deep inside the adapter (non-PyTorch
+            # framework) or silently mislabel ground truth (a dataset other
+            # than CIFAR10 that's never actually used) -- catching both
+            # here, at the same place every other compatibility error is
+            # caught, rather than leaving it as a runtime surprise.
+            if (self.framework or "").lower() != FL_DISTRIBUTED_FRAMEWORK.lower():
+                errors.append(
+                    f"paradigm '{self.paradigm}' only works with framework "
+                    f"'{FL_DISTRIBUTED_FRAMEWORK}' today -- every fl_frameworks/distributed_frameworks "
+                    f"adapter calls .state_dict()/.parameters()/.train() directly on the loaded model, "
+                    f"which only a plain PyTorch nn.Module supports, not '{self.framework}'."
+                )
+            if (self.architecture or "") not in FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES:
+                errors.append(
+                    f"paradigm '{self.paradigm}' only works with architecture(s) "
+                    f"{FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES} today -- every fl_frameworks/"
+                    f"distributed_frameworks adapter's training loop expects CIFAR10-shaped "
+                    f"10-class classification output, which '{self.architecture}' doesn't produce."
+                )
+            if (self.dataset or "").lower() != FL_DISTRIBUTED_DATASET.lower():
+                errors.append(
+                    f"paradigm '{self.paradigm}' only works with dataset "
+                    f"'{FL_DISTRIBUTED_DATASET}' today -- every fl_frameworks/distributed_frameworks "
+                    f"adapter hardcodes its own CIFAR10 data loader and never reads config.dataset, "
+                    f"so setting dataset: '{self.dataset}' would silently mislabel ground truth "
+                    f"rather than actually being used."
+                )
+
         application_lower = (self.application or "").lower()
         family_lower = (self.family or "").lower()
 

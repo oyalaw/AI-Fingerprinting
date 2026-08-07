@@ -331,13 +331,19 @@ Framework -> Family -> Architecture -> Application -> Dataset):
   `paradigm: federated_learning` and, say, `dataset: Synthetic` would
   validate and run "successfully" while silently mislabeling ground truth
   -- the captured traffic would actually be CIFAR10 training traffic,
-  but `ground_truth.json` would record `"dataset": "Synthetic"`. This
-  gap remains for hand-written `config.yaml` files -- `core/config.py`'s
-  `validate()` doesn't check this (a runtime-behavior concern, not a
-  registry-compatibility one), so a manually-authored config can still
-  hit it; set `dataset: CIFAR10` and `framework: PyTorch` explicitly for
-  `federated_learning`/`distributed_training` configs until/unless these
-  adapters are generalized to read `config.dataset` for real.
+  but `ground_truth.json` would record `"dataset": "Synthetic"`.
+  `core/config.py`'s `validate()` now enforces this same constraint
+  directly (`FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES`/
+  `FL_DISTRIBUTED_DATASET`/`FL_DISTRIBUTED_FRAMEWORK`, the single source
+  of truth both `--interactive` and `validate()` share), so a
+  hand-written `config.yaml` hitting this same mismatch is now rejected
+  with a clear, specific error instead of silently mislabeling ground
+  truth or crashing deep inside the adapter -- closing the gap this
+  section originally flagged as unprotected. This remains a real
+  implementation constraint of the FL/distributed adapters themselves,
+  not something `validate()` can paper over -- generalizing them to read
+  `config.dataset` for real (rather than just rejecting mismatches early)
+  is a much larger undertaking left for later.
 
 Verified directly by walking all three (Jetson/Ubuntu/iPhone device
 choices) through the real prompt and confirming the framework lists
