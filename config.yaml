@@ -16,7 +16,7 @@ family: CNN
 architecture: ResNet18
 application: Image Classification
 dataset: CIFAR10
-transport: TCP                # TCP | TLS (gRPC/HTTP are stubs for now)
+transport: TCP                # TCP | TLS | HTTP | gRPC -- see README.md for what's real vs. stub
 
 host: 127.0.0.1
 port: 8765
