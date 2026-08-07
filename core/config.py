@@ -101,15 +101,18 @@ class ExperimentConfig:
             check(FL_FRAMEWORKS, self.fl_framework, "fl_framework")
         if self.paradigm == "distributed_training":
             check(DISTRIBUTED_FRAMEWORKS, self.distributed_framework, "distributed_framework")
-        if self.application == "text_generation" and self.llm_framework:
+        application_lower = (self.application or "").lower()
+        family_lower = (self.family or "").lower()
+
+        if application_lower == "text generation" and self.llm_framework:
             check(LLM_FRAMEWORKS, self.llm_framework, "llm_framework", required=False)
-        if self.application in ("object_detection", "segmentation") and self.cv_framework:
+        if application_lower in ("object detection", "segmentation") and self.cv_framework:
             check(CV_FRAMEWORKS, self.cv_framework, "cv_framework", required=False)
-        if self.application == "speech_recognition" and self.speech_framework:
+        if application_lower == "speech recognition" and self.speech_framework:
             check(SPEECH_FRAMEWORKS, self.speech_framework, "speech_framework", required=False)
-        if self.family == "gnn" and self.graph_framework:
+        if family_lower == "gnn" and self.graph_framework:
             check(GRAPH_FRAMEWORKS, self.graph_framework, "graph_framework", required=False)
-        if self.family == "diffusion" and self.diffusion_framework:
+        if family_lower == "diffusion" and self.diffusion_framework:
             check(DIFFUSION_FRAMEWORKS, self.diffusion_framework, "diffusion_framework", required=False)
 
         if not errors and ARCHITECTURES.has(self.architecture):

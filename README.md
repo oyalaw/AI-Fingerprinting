@@ -114,6 +114,28 @@ Promoting any of these further would mean a genuinely new environment
 decision -- installing WSL, standing up Docker, or running on different
 hardware -- not another investigation pass.
 
+### Fixed: sub-framework validation was silently dead code
+
+`core/config.py`'s `validate()` gates its `llm_framework`/`cv_framework`/
+`speech_framework`/`graph_framework`/`diffusion_framework` checks behind
+comparisons like `self.application == "text_generation"` and
+`self.family == "gnn"` -- but every registry entry's real name is proper
+case with spaces (`"Text Generation"`, `"GNN"`), never that snake_case
+form, since that's what `application:`/`family:` in `config.yaml` and
+`--interactive`'s prompts actually set. Confirmed directly: those
+comparisons never matched, so `validate()` silently never checked any of
+the five sub-framework fields at all -- a config with
+`speech_framework: TotallyBogusFramework` passed validation cleanly and
+would only fail later, deep inside `architectures/whisper.py`'s dispatch,
+with a confusing `KeyError` instead of `validate()`'s own clear "Unknown
+speech_framework" message. Fixed by comparing against the real
+(lowercased) application/family names instead. Verified directly: the
+bogus case above is now correctly rejected by `validate()` for all five
+fields, every real sub-framework choice (SpeechBrain, ESPnet, FastChat,
+Ultralytics, PyTorch Geometric, Diffusers) still validates fine, and
+every `experiment_matrix.yaml` entry setting a sub-framework field still
+passes.
+
 ## Setup
 
 ```bash
