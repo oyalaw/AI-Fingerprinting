@@ -69,6 +69,51 @@ Written to each framework's documented API but **not execution-verified** in thi
 - **Transport**: TCP and TLS (self-signed dev cert auto-generated), plus HTTP -- a plain `http.server`/`http.client` implementation of the same `Transport` interface, standard library only. HTTP is request/response, not the persistent bidirectional stream TCP/TLS use, so the server side bridges this project's synchronous send()/recv() calls onto it with a small queue: the HTTP handler (its own thread per request) hands each request body to the main thread via one queue and blocks on a second queue for the response bytes to write back -- correct here because exactly one request is ever in flight (this project's client always waits for the full response before sending the next). Verified end-to-end including a real client/server roundtrip with correct ground truth (`"transport": "HTTP"`).
 - **Transport**: gRPC, the last transport stub -- turned out not to need the protobuf schema its old docstring assumed. gRPC's low-level Python API supports raw-bytes unary-unary calls directly (`grpc.unary_unary_rpc_method_handler` + `grpc.method_handlers_generic_handler` with identity serializers), no `.proto` file or generated stub code anywhere -- confirmed directly with a minimal roundtrip before writing the real adapter. Bridges gRPC's single-call request/response shape onto this project's split send()/recv() interface the same way the HTTP transport already bridges HTTP's: a small queue pair on the server side, a stash-the-response pattern on the client side. Verified end-to-end with a real two-process client/server run (`python main.py --config ... --role server` / `--role client`, real ResNet18/CIFAR10, `capture: false`) -- 3/3 requests served correctly, ground truth correctly recorded `"transport": "gRPC"`.
 
+### Stub sweep: complete
+
+Every stub in every registry -- not just the ones with an interesting story
+above -- has now been individually investigated and, for the ones that
+stayed stubs, has a docstring documenting a specific, confirmed root cause
+rather than a placeholder. `family` (6/6), `architecture` (17/17),
+`application` (10/10), `dataset` (8/8), `device` (11/11), and `transport`
+(4/4) are fully real. The remaining registries (`framework` 22/23,
+`fl_framework` 3/16, `distributed_framework` 2/10, `llm_framework` 3/10,
+`cv_framework` 3/8, `speech_framework` 3/6, `graph_framework` 1/4,
+`diffusion_framework` 1/4) still have stubs, but every one of them was
+directly retried -- including a second pass after installing a C/C++
+compiler and pinning `setuptools` specifically to retest everything that
+looked compiler- or `pkg_resources`-shaped -- and each remaining stub's
+docstring names the exact wall it hit. Run `python main.py --list` for the
+live counts; grep any `[stub]` entry's module docstring for the story.
+Every remaining blocker falls into one of these buckets, none of which
+another retry or pip flag fixes from here:
+
+- **No installable Python package exists at all** (e.g. Kaldi, ComfyUI,
+  Stable Diffusion WebUI, Text Generation Inference, LEAF, StellarGraph,
+  Megatron-LM, PaddleFL)
+- **Hardware/OS this machine doesn't have** (TensorRT LLM, ExLlamaV2's
+  CUDA-only kernels, ColossalAI requiring WSL, BytePS needing `make`,
+  Horovod needing CMake)
+- **A different ML framework family this project isn't built for**
+  (Spektral/PaddleFL/PaddleDetection on TensorFlow/PaddlePaddle,
+  FedJAX/Alpa on JAX -- this project's shared architecture contract is
+  PyTorch-only by design)
+- **Remote infrastructure this project can't stand up** (FATE's deployed
+  cluster, Ollama's separately-running server, Clara FL already covered
+  by the implemented NVFlare entry under its current name)
+- **A Python-version ceiling upstream hasn't lifted yet** (OpenFL,
+  InvokeAI, vLLM's Windows-incompatible `uvloop` dependency)
+- **A permanent standard-library removal an old dependency pin never
+  adapted to** (PaddleDetection's `numpy==1.23.5` needing the
+  Python-3.12-removed `distutils` module)
+- **Would just duplicate an already-implemented entry under a different
+  name** (Metal Performance Shaders -- Apple has no standalone Python API
+  for it distinct from the already-real `MPS Backend`/`CoreML` entries)
+
+Promoting any of these further would mean a genuinely new environment
+decision -- installing WSL, standing up Docker, or running on different
+hardware -- not another investigation pass.
+
 ## Setup
 
 ```bash
