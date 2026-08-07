@@ -1,34 +1,35 @@
-"""NeMo -- deliberately left a stub, for a different reason than most
-findings in this file: not a single clean blocker, but a long chain of
-undeclared transitive dependencies that never bottomed out.
+"""NeMo -- deliberately left a stub. Chased further than most findings in
+this file, and it does bottom out in a real wall -- just one five layers
+deep.
 
-Checked directly, further than most: `pip install nemo-toolkit` succeeds,
-and bare `import nemo` works. But `import nemo.collections.asr` (the
-actual speech-recognition module, what a real adapter would need) failed
-on a missing dependency four times in a row, each installed in turn to
-see how deep it went: `wandb` -> `tensorboard` -> `hydra-core` ->
-`lightning` -> `nv_one_logger` (NVIDIA's internal telemetry package, at
-which point the chase was stopped). None of these are declared as
-install-time dependencies of nemo-toolkit itself -- they're only
-discovered by actually importing the submodule and reading each new
-traceback. This is a different, messier category of finding than a clean
-"needs a compiler" or "needs a GPU" wall: NeMo's own pip packaging
-under-declares its real dependency footprint for the ASR collection
-specifically, and there's no way to know how many more layers remain
-short of continuing indefinitely.
+Checked directly: `pip install nemo-toolkit` succeeds, and bare
+`import nemo` works. But `import nemo.collections.asr` (the actual
+speech-recognition module, what a real adapter would need) hits a chain
+of undeclared transitive dependencies -- none of them listed as
+nemo-toolkit's own install-time requirements, only discoverable by
+actually importing the submodule and reading each new traceback:
 
-Worth revisiting with more budget than this pass had, since nothing found
-so far rules it out the way (for example) fl_frameworks/fedjax_adapter.py's
-architectural mismatch does -- this is patience, not a wall.
+    wandb -> tensorboard -> hydra-core -> lightning -> nv_one_logger
+
+The first four all installed fine. The fifth, `nv_one_logger` (NVIDIA's
+internal telemetry/logging package, imported unconditionally by
+`nemo.lightning.one_logger_callback`, itself pulled in unconditionally by
+`nemo.core.classes.modelPT` -- no lazy-loading escape hatch the way
+speech_frameworks/speechbrain_adapter.py found for SpeechBrain's CRDNN
+lobe), has zero PyPI distribution at all: `pip install nv-one-logger`
+returns "No matching distribution found", consistent with it being an
+internal-only or private-index NVIDIA package never published publicly.
+That's a genuine, terminal wall, not a resolvable gap -- there's no
+version of this chain that completes without a package that isn't public.
 """
 from core.registry import SPEECH_FRAMEWORKS
 
 
 def build(**kwargs):
     raise NotImplementedError(
-        "nemo.collections.asr has a long chain of undeclared transitive "
-        "dependencies (wandb, tensorboard, hydra, lightning, nv_one_logger, "
-        "and counting) -- see this module's docstring."
+        "nemo.collections.asr's import chain terminates at nv_one_logger, an "
+        "NVIDIA-internal package with no public PyPI distribution -- see this "
+        "module's docstring."
     )
 
 
