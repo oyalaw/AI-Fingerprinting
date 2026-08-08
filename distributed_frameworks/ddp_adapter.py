@@ -9,8 +9,9 @@ Data loading goes through core/training_data.py's
 build_classification_dataset() (config.dataset, via the DATASETS/
 APPLICATIONS registries) rather than hardcoding
 torchvision.datasets.CIFAR10 the way this adapter originally did -- see
-core/config.py's FL_DISTRIBUTED_COMPATIBLE_DATASETS for exactly which
-datasets that supports and why.
+core/config.py's FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES and
+core/training_data.py for exactly which architecture/application/dataset
+combinations that supports and why.
 
 torch/torchvision are imported lazily inside functions, not at module
 scope, so `python main.py --list` can enumerate this registration without

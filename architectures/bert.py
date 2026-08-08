@@ -60,5 +60,6 @@ ARCHITECTURES.register(
     family="Transformer",
     framework="PyTorch",
     application="Sentiment Analysis",
+    num_classes=2,
     input_shape=(3, 32),
 )(build)

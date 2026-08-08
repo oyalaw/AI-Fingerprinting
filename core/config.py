@@ -31,25 +31,47 @@ VALID_ROLES = ("client", "server", "standalone")
 # plain PyTorch nn.Module supports (confirmed:
 # frameworks/openvino_adapter.py's load_model() returns an OpenVINOModel
 # wrapper with none of those methods) -- so framework is locked to
-# PyTorch. Architecture is locked to the four num_classes=10 image
-# classifiers, since every adapter's loss is CrossEntropyLoss over a fixed
-# 10-class output. Dataset is locked to datasets that actually produce (a)
-# real image samples matching Image Classification's preprocess() and (b)
-# no more than 10 distinct labels -- CIFAR10 (10 real classes) and
-# Synthetic (`f"synthetic-{i % 10}"`, confirmed directly in
-# datasets/synthetic.py) both qualify; ImageNet (1000 classes) doesn't,
-# without also changing how the architectures are constructed.
+# PyTorch. Architecture is locked to architectures that are genuinely
+# classification-shaped (one scalar string label per independent sample,
+# CrossEntropyLoss over class logits) -- confirmed directly, not just
+# assumed, for all 8 of these: Image Classification (ResNet18/ResNet50/
+# MobileNetV2/ViT, num_classes=10), Sentiment Analysis (BERT/DistilBERT,
+# num_classes=2), Activity Recognition (LSTM/GRU, num_classes=6). Node
+# Classification (GCN) does NOT fit -- confirmed structurally, not by
+# policy: datasets/karate_club.py's samples() yields the same whole-graph
+# input n times, each paired with a list of all 34 node labels at once
+# (not a scalar), and GCN's forward pass is transductive (one graph in,
+# all-node logits out per call) -- see core/training_data.py's docstring
+# for the full finding. Every generative/structured-output application
+# (Text Generation, Image Generation, Speech Recognition, Object
+# Detection, Segmentation, Image Reconstruction) has no scalar
+# classification label either and stays excluded the same way.
+#
+# Dataset compatibility isn't a second, separate flat list -- it's derived
+# from the already-existing APPLICATIONS registry's own `datasets=[...]`
+# metadata (applications/*.py's registration calls, the same list
+# main.py's --interactive Application->Dataset filter already uses), so
+# there's nothing here that could drift out of sync with it. A dataset
+# still needs to actually fit the locked architecture's num_classes --
+# core/training_data.py's build_classification_dataset() checks that
+# directly against each architecture's own num_classes metadata (not a
+# blanket constant), e.g. so ImageNet's 1000 classes correctly can't be
+# paired with num_classes=10 architectures without a config.yaml error
+# well before any training loop runs.
 #
 # core/training_data.py's build_classification_dataset() is what actually
-# loads whichever of these datasets is selected via the DATASETS/
-# APPLICATIONS registries (the same abstraction paradigm=inference uses),
-# instead of every adapter hardcoding its own torchvision.datasets.CIFAR10
-# call the way they all used to.
+# loads whichever dataset is selected via the DATASETS/APPLICATIONS
+# registries (the same abstraction paradigm=inference uses), instead of
+# every adapter hardcoding its own torchvision.datasets.CIFAR10 call the
+# way they all used to.
 #
 # A single source of truth here, reused by both this module's validate()
 # and main.py's --interactive locking, so the two can't drift apart.
-FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES = ("ResNet18", "ResNet50", "MobileNetV2", "ViT")
-FL_DISTRIBUTED_COMPATIBLE_DATASETS = ("CIFAR10", "Synthetic")
+FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES = (
+    "ResNet18", "ResNet50", "MobileNetV2", "ViT",  # Image Classification
+    "BERT", "DistilBERT",  # Sentiment Analysis
+    "LSTM", "GRU",  # Activity Recognition
+)
 FL_DISTRIBUTED_FRAMEWORK = "PyTorch"
 
 
@@ -88,7 +110,7 @@ class ExperimentConfig:
 
     num_clients: int = 2
     num_rounds: int = 3
-    client_index: int = 0  # FL: which CIFAR10 partition this client trains on
+    client_index: int = 0  # FL: which partition of config.dataset this client trains on
     worker_rank: int = 1  # distributed training: this process's rank (coordinator is always rank 0)
 
     def validate(self):
@@ -149,17 +171,40 @@ class ExperimentConfig:
                 errors.append(
                     f"paradigm '{self.paradigm}' only works with architecture(s) "
                     f"{FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES} today -- every fl_frameworks/"
-                    f"distributed_frameworks adapter's training loop expects CIFAR10-shaped "
-                    f"10-class classification output, which '{self.architecture}' doesn't produce."
+                    f"distributed_frameworks adapter's training loop expects a classification-"
+                    f"shaped architecture (CrossEntropyLoss over class logits), which "
+                    f"'{self.architecture}' isn't."
                 )
-            if (self.dataset or "") not in FL_DISTRIBUTED_COMPATIBLE_DATASETS:
-                errors.append(
-                    f"paradigm '{self.paradigm}' only works with dataset(s) "
-                    f"{FL_DISTRIBUTED_COMPATIBLE_DATASETS} today -- every fl_frameworks/"
-                    f"distributed_frameworks adapter's training loop expects Image "
-                    f"Classification-shaped input with no more than 10 distinct labels "
-                    f"(num_classes=10), which '{self.dataset}' doesn't produce."
-                )
+            elif APPLICATIONS.has(self.application):
+                arch_application = ARCHITECTURES.get(self.architecture).meta.get("application")
+                if arch_application and arch_application.lower() != (self.application or "").lower():
+                    # Architecture<->application mismatches aren't checked
+                    # anywhere else in validate() (a general, pre-existing
+                    # gap for paradigm=inference too), but for FL/distributed
+                    # specifically the consequences are worse than a wrong
+                    # ground-truth label: e.g. architecture=BERT with
+                    # application=Image Classification would crash deep
+                    # inside _BertWrapper.forward() on a raw image tensor
+                    # instead of the (3, seq_len) token stack it expects.
+                    errors.append(
+                        f"architecture '{self.architecture}' pairs with application "
+                        f"'{arch_application}', not '{self.application}'."
+                    )
+                else:
+                    # Dataset compatibility for FL/distributed reuses the
+                    # same per-application datasets=[...] metadata everything
+                    # else already relies on, rather than a second, separate
+                    # list -- see FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES's
+                    # comment above.
+                    allowed_datasets = APPLICATIONS.get(self.application).meta.get("datasets") or ()
+                    if allowed_datasets and (self.dataset or "") not in allowed_datasets:
+                        errors.append(
+                            f"application '{self.application}' only works with dataset(s) "
+                            f"{tuple(allowed_datasets)} today, not '{self.dataset}' -- checked here "
+                            f"specifically for paradigm '{self.paradigm}' (a mismatch would otherwise "
+                            f"silently mislabel ground truth or crash inside the training loop; this "
+                            f"isn't enforced for paradigm=inference, see README.md)."
+                        )
 
         application_lower = (self.application or "").lower()
         family_lower = (self.family or "").lower()

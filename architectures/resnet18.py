@@ -69,5 +69,6 @@ ARCHITECTURES.register(
         "Edge Impulse",
     ],
     application="Image Classification",
+    num_classes=10,
     input_shape=(3, 32, 32),
 )(build)

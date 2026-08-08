@@ -19,7 +19,6 @@ import sys
 
 from core.config import (
     FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES,
-    FL_DISTRIBUTED_COMPATIBLE_DATASETS,
     FL_DISTRIBUTED_FRAMEWORK,
     VALID_PARADIGMS,
     VALID_ROLES,
@@ -133,13 +132,16 @@ def cmd_interactive(_args):
     locks_fl_distributed = paradigm in ("federated_learning", "distributed_training")
     if locks_fl_distributed:
         print(
-            f"\nNote: every {paradigm} adapter's training loop is CrossEntropyLoss over a "
-            f"fixed 10-class output, so Framework is locked to {FL_DISTRIBUTED_FRAMEWORK} and "
-            "Architecture to the num_classes=10 image classifiers below -- Dataset is real, "
-            f"not locked: {FL_DISTRIBUTED_COMPATIBLE_DATASETS} both actually get loaded via "
-            "core/training_data.py, whichever you pick. core/config.py's validate() enforces "
-            "the same constraints for hand-written config.yaml files too, see "
-            "FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES's comment there for the full reasoning."
+            f"\nNote: every {paradigm} adapter's training loop needs a classification-shaped "
+            f"architecture (CrossEntropyLoss over class logits), so Framework is locked to "
+            f"{FL_DISTRIBUTED_FRAMEWORK} and Architecture to the classification architectures "
+            "below (Image Classification, Sentiment Analysis, or Activity Recognition -- not "
+            "e.g. Node Classification's transductive GCN or any generative application). "
+            "Application/Dataset are real, not locked further -- core/training_data.py loads "
+            "whichever you pick via the same registries paradigm=inference uses. "
+            "core/config.py's validate() enforces the same constraints for hand-written "
+            "config.yaml files too, see FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES's comment "
+            "there for the full reasoning."
         )
 
     device = _prompt_registry_choice("Device", DEVICES)
@@ -201,11 +203,11 @@ def cmd_interactive(_args):
         d.lower() for d in (APPLICATIONS.get(application).meta.get("datasets") or ())
     }
 
-    fl_distributed_datasets_lower = {d.lower() for d in FL_DISTRIBUTED_COMPATIBLE_DATASETS}
-
     def _dataset_matches_application(entry):
-        if locks_fl_distributed:
-            return entry.name.lower() in fl_distributed_datasets_lower
+        # Once Architecture is locked (above, for FL/distributed), the
+        # existing Architecture->Application->Dataset chain already offers
+        # exactly the right datasets for whichever locked architecture was
+        # picked -- no separate FL/distributed dataset filter needed here.
         return not application_datasets or entry.name.lower() in application_datasets
 
     dataset = _prompt_registry_choice("Dataset", DATASETS, filter_fn=_dataset_matches_application)

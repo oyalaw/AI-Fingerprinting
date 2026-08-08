@@ -310,10 +310,11 @@ experiments:
   # truth, which is what every FL/distributed adapter did before this
   # entry existed. Verified end-to-end including a real client/server
   # roundtrip, ground_truth.json correctly recording "dataset":
-  # "Synthetic". See core/config.py's FL_DISTRIBUTED_COMPATIBLE_DATASETS
-  # for exactly which datasets this supports and why (CIFAR10 or
-  # Synthetic only -- both real 10-label classification data, unlike
-  # e.g. ImageNet's 1000 classes).
+  # "Synthetic". See core/config.py's FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES
+  # and core/training_data.py for exactly which architecture/application/
+  # dataset combinations this supports and why (CIFAR10 or Synthetic for
+  # Image Classification -- both real 10-label classification data,
+  # unlike e.g. ImageNet's 1000 classes).
   - name: fl_flower_resnet18_synthetic
     paradigm: federated_learning
     fl_framework: Flower
@@ -434,6 +435,47 @@ experiments:
     transport: TCP
     num_clients: 2
     num_rounds: 2
+
+  # First non-Image-Classification FL/distributed combo -- confirmed
+  # BERT/DistilBERT (num_classes=2) and IMDB/SST2 (both yield exactly
+  # "negative"/"positive") are classification-shaped in exactly the way
+  # ResNet18/CIFAR10 is, so core/training_data.py's
+  # build_classification_dataset() needed no new mechanics, just
+  # architecture/dataset registry wiring -- see
+  # core/config.py's FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES for the
+  # confirmed reasoning (and why Node Classification/GCN does NOT fit the
+  # same way). Verified end-to-end with a real Flower client/server
+  # roundtrip, ground_truth.json correctly recording "architecture":
+  # "BERT", "application": "Sentiment Analysis", "dataset": "IMDB".
+  - name: fl_flower_bert_imdb
+    paradigm: federated_learning
+    fl_framework: Flower
+    framework: PyTorch
+    family: Transformer
+    architecture: BERT
+    application: Sentiment Analysis
+    dataset: IMDB
+    transport: TCP
+    num_clients: 1
+    num_rounds: 1
+
+  # Second non-Image-Classification FL/distributed combo: LSTM
+  # (num_classes=6) + UCI HAR (exactly 6 activity labels), same
+  # classification-shaped reasoning as the Flower/BERT entry above.
+  # Verified end-to-end with a real DDP coordinator+worker roundtrip,
+  # ground_truth.json correctly recording "architecture": "LSTM",
+  # "application": "Activity Recognition", "dataset": "UCI HAR".
+  - name: distributed_ddp_lstm_ucihar
+    paradigm: distributed_training
+    distributed_framework: DistributedDataParallel
+    framework: PyTorch
+    family: RNN
+    architecture: LSTM
+    application: Activity Recognition
+    dataset: UCI HAR
+    transport: TCP
+    num_clients: 2
+    num_rounds: 1
 
   # Implemented, but hardware-gated -- needs an actual NVIDIA GPU (Jetson)
   # with TensorRT + pycuda installed to run; validates and lists fine

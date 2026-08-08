@@ -7,21 +7,33 @@ abstraction paradigm=inference already uses (roles/client.py,
 roles/standalone.py), so a config's dataset selection genuinely reflects
 what traffic gets generated instead of silently mislabeling ground truth.
 
-Deliberately scoped narrow: only valid for the architecture/application/
-dataset combinations core/config.py's FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES
-/FL_DISTRIBUTED_COMPATIBLE_DATASETS lock paradigm=federated_learning/
-distributed_training to (Image Classification with num_classes=10
-architectures, CIFAR10 or Synthetic datasets) -- see that module's
-docstring for why this doesn't generalize further: Dataset.samples()
-yields a human-readable label *string* for inference-time logging only,
-there's no numeric-label or loss-function concept anywhere in the
-Application interface, so genuinely different applications (text
-generation, node classification, ...) would need that concept invented
-from scratch, out of scope here.
-"""
-from core.registry import APPLICATIONS, DATASETS
+Scoped to applications that are genuinely classification-shaped: one
+scalar string label per independent sample, model output is class
+logits, trained with CrossEntropyLoss. Image Classification (ResNet18/
+ResNet50/MobileNetV2/ViT), Sentiment Analysis (BERT/DistilBERT), and
+Activity Recognition (LSTM/GRU) all fit this exactly -- confirmed
+directly for each: Application.preprocess() always returns a fixed-shape
+tensor per sample, and every compatible dataset's samples() yields
+exactly as many distinct label strings as its paired architecture's
+num_classes (confirmed via architectures/*.py's own num_classes=
+metadata, e.g. 10 for CIFAR10/Synthetic, 2 for IMDB/SST2's positive/
+negative, 6 for UCI HAR's activity labels).
 
-_MAX_CLASSES = 10  # matches every FL/distributed-compatible architecture's num_classes=10
+Node Classification (GCN) does NOT fit and was confirmed structurally
+incompatible, not just excluded by policy: datasets/karate_club.py's
+samples(n) yields the *same* whole-graph array n times, each paired with
+the full list of all 34 node labels at once (a list, not a scalar --
+would crash the label_names set-comprehension below outright), and GCN's
+forward pass is transductive (one graph in, all-node logits out per
+call, no batch-of-independent-samples concept at all). Every generative/
+structured-output application (Text Generation, Image Generation, Speech
+Recognition, Object Detection, Segmentation, Image Reconstruction)
+doesn't have a scalar classification label either and would need its own
+invented-from-scratch loss/training logic. See
+core/config.py's FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES for the enforced
+set.
+"""
+from core.registry import APPLICATIONS, ARCHITECTURES, DATASETS
 
 
 def build_classification_dataset(config, total_samples_needed):
@@ -38,12 +50,19 @@ def build_classification_dataset(config, total_samples_needed):
     this project drives is random-init, so there's no canonical
     class-index alignment to preserve, only a consistent one -- the same
     "traffic over accuracy" policy documented throughout architectures/*.py.
+
+    The observed label count is checked against config.architecture's own
+    num_classes metadata (not a blanket constant) -- catches e.g.
+    accidentally pairing a 2-class dataset with a 6-class architecture
+    precisely, rather than a one-size-fits-all "≤10" check that would
+    silently let such a mismatch through.
     """
     import torch
     from torch.utils.data import TensorDataset
 
     application = APPLICATIONS.get(config.application).build()
     dataset = DATASETS.get(config.dataset).build()
+    num_classes = ARCHITECTURES.get(config.architecture).meta.get("num_classes")
 
     samples = list(dataset.samples(total_samples_needed))
     if not samples:
@@ -53,12 +72,12 @@ def build_classification_dataset(config, total_samples_needed):
         )
 
     label_names = sorted({label for _, label in samples})
-    if len(label_names) > _MAX_CLASSES:
+    if num_classes and len(label_names) > num_classes:
         raise RuntimeError(
             f"dataset '{config.dataset}' produced {len(label_names)} distinct labels, "
-            f"more than the {_MAX_CLASSES} classes every FL/distributed-compatible "
-            f"architecture is built for (num_classes={_MAX_CLASSES}) -- see "
-            f"core/config.py's FL_DISTRIBUTED_COMPATIBLE_DATASETS."
+            f"more than architecture '{config.architecture}' is built for "
+            f"(num_classes={num_classes}) -- see core/config.py's "
+            f"FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES."
         )
     label_to_index = {label: index for index, label in enumerate(label_names)}
 

@@ -32,5 +32,6 @@ ARCHITECTURES.register(
     family="RNN",
     framework="PyTorch",
     application="Activity Recognition",
+    num_classes=6,
     input_shape=(128, 9),
 )(build)

@@ -18,8 +18,9 @@ FedLab ships its own disk-persisting `fedlab.contrib.dataset.PartitionedCIFAR10`
 but reusing core/training_data.py's registry-based loader (config.dataset,
 not a hardcoded CIFAR10) matches this project's existing dataset/family
 conventions more consistently than adopting FedLab's separate on-disk
-partition cache. See core/config.py's FL_DISTRIBUTED_COMPATIBLE_DATASETS
-for exactly which datasets that supports and why.
+partition cache. See core/config.py's FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES
+and core/training_data.py for exactly which architecture/application/
+dataset combinations that supports and why.
 
 **What was actually tested here, and what's still unresolved:** a real bug
 was found and fixed -- `SyncServerHandler` lives in

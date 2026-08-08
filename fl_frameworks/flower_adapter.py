@@ -11,9 +11,11 @@ Data loading goes through core/training_data.py's
 build_classification_dataset() -- the same DATASETS/APPLICATIONS registry
 abstraction paradigm=inference uses -- rather than hardcoding
 torchvision.datasets.CIFAR10 the way this adapter originally did. See
-core/config.py's FL_DISTRIBUTED_COMPATIBLE_DATASETS for exactly which
-datasets that supports and why (CIFAR10 or Synthetic; both real 10-label
-classification data, unlike e.g. ImageNet's 1000 classes).
+core/config.py's FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES and
+core/training_data.py for exactly which architecture/application/dataset
+combinations that supports and why (Image Classification, Sentiment
+Analysis, and Activity Recognition; not e.g. Node Classification's
+transductive GCN or any generative application).
 
 torch/torchvision/flwr are imported lazily inside functions, not at module
 scope, so `python main.py --list` can enumerate this registration without
