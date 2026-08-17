@@ -33,6 +33,28 @@ and supported) and a newer Relax IR in recent releases -- re-check this
 against current TVM docs before relying on it, since which IR is the
 recommended default has shifted across versions.
 
+Re-checked on Ubuntu: both of the above are now moot, replaced by a
+bigger, final finding. `apache-tvm` 0.26.0 now ships a real prebuilt
+`manylinux` wheel with no separate `apache-tvm-ffi` compiler step needed
+at all (confirmed: plain `pip install apache-tvm` succeeds cleanly, no
+compiler invoked) -- and the WinError-127 native-library-loading issue is
+confirmed gone too: `import tvm.runtime` loads the prebuilt runtime
+cleanly on Linux, no error. But the "mid-transition" warning above turned
+out to be exactly right: **Relay IR is gone**. Confirmed directly:
+`from tvm import relay` raises `ImportError: cannot import name 'relay'
+from 'tvm' (... Did you mean: 'relax'?)` -- this release doesn't ship the
+`tvm.relay` module this adapter's code (`relay.frontend.from_pytorch`,
+`relay.build`) is written against at all, only `tvm.relax`, confirmed
+separately to import fine. Relax isn't a drop-in rename -- its PyTorch
+frontend (`relax.frontend.torch.from_exported_program`, operating on a
+`torch.export`-style `ExportedProgram` rather than a `torch.jit.trace`d
+graph) and its own build/runtime API are a different surface entirely, the
+same shape of rewrite ExecuTorch's own `torch.export`-based pipeline
+uses. Every environment wall this docstring traced is now resolved; what's
+left is a genuine rewrite against TVM's current Relax API, not an
+environment blocker -- left as a stub for that reason, tracked here rather
+than silently reused under the old Relay code.
+
 torch/tvm are imported lazily so this module still registers cleanly --
 and shows up correctly in `python main.py --list` -- on a machine without
 them installed.
