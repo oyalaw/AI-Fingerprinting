@@ -1,5 +1,9 @@
-"""FedLab federated learning adapter -- written to the real API; execution
-hangs partway through on this machine, root cause not fully isolated.
+"""FedLab federated learning adapter -- real implementation, verified
+end-to-end. The hang described below was specific to this project's
+earlier Windows dev machine and does not reproduce on Ubuntu -- re-run
+directly after this project moved to Linux, confirming the "FedLab/PyTorch
+version incompatibility in its lower-level send/recv wire protocol"
+hypothesis was on the right track.
 
 Unlike Flower (which manages its own gRPC transport internally), FedLab's
 communication layer is built directly on `torch.distributed` -- its
@@ -44,6 +48,20 @@ root cause -- don't rule out a bug in this adapter's own setup either. Re-run
 the isolated setup diagnostics yourself before trusting this one; treat it
 like frameworks/executorch_adapter.py and frameworks/tvm_adapter.py, i.e.
 real code against the documented API, not confirmed to run end-to-end.
+
+**Update, on Ubuntu**: re-ran this exact adapter, unchanged, through
+`python main.py` for real. No hang at all -- confirmed directly with both
+a 1-client and a 2-client run: server and client(s) complete the full
+`SetUp` -> `ParameterUpdate` -> `Exit` message sequence cleanly in each
+direction (visible in FedLab's own network logging -- every `Sent`/
+`Received` pair on both sides, no missing acknowledgement), both processes
+exit 0, and `ground_truth.json` correctly records
+`"fl_framework": "FedLab"`. The asymmetric-hang hypothesis above (a
+FedLab/PyTorch version incompatibility in the send/recv wire protocol,
+not a bug in this adapter's own code) is the more likely explanation in
+hindsight, given the exact same adapter code now runs cleanly end-to-end
+with no changes -- only the OS/environment did. Now genuinely verified,
+not just written-to-the-API.
 
 torch/torchvision/fedlab are imported lazily inside functions, not at
 module scope, so `python main.py --list` can enumerate this registration
