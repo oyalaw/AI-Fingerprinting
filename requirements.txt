@@ -186,12 +186,21 @@ diffusers
 # specifically because that check failed. See README.md's framework list
 # and each frameworks/*_adapter.py docstring for the specific blocker.
 
-# TensorFlow inference (via onnx2tf conversion). No wheel for this
-# project's Python version at all (confirmed via `pip index versions
-# tensorflow`) -- check that command yourself before assuming either of
-# these install.
-# tensorflow
-# onnx2tf
+# TensorFlow inference (via onnx2tf conversion). Now installs cleanly on
+# Linux + Python 3.13 (tensorflow ships a real cp313 wheel as of 2.21.0) --
+# check `pip index versions tensorflow` yourself before assuming this on a
+# different Python version. onnx2tf's own PyPI metadata under-declares its
+# dependencies (needs tf_keras, onnx_graphsurgeon, ai-edge-litert, and
+# sng4onnx too, none pulled in automatically), and the version this
+# project's dependency resolution settles on (1.28.8) has a real bug
+# loading its bundled calibration image under numpy 2.x's stricter
+# allow_pickle default -- see frameworks/tensorflow_adapter.py's docstring
+# before assuming this runs end-to-end.
+tensorflow
+onnx2tf
+tf_keras
+onnx_graphsurgeon
+sng4onnx
 
 # TensorFlow Lite Micro inference. Not a PyPI package at all -- there is
 # no `pip install` path, only a from-source Bazel build against

@@ -1,5 +1,8 @@
 """TensorFlow framework adapter -- written to the documented conversion
-API, NOT execution-verified in this environment.
+API. The original wheel-availability blocker is now resolved; retrying
+surfaced two further, unrelated bugs in the conversion library underneath
+it, confirmed by actually running the adapter rather than left as a
+prediction.
 
 There's no direct PyTorch -> TensorFlow path from TensorFlow itself, same
 situation TensorRT/OpenVINO/TFLite are in with their own converters. The
@@ -11,12 +14,51 @@ TensorFlow SavedModel with `onnx2tf` (actively maintained; the older
 unmaintained). Inference then runs through `tf.saved_model.load(...)`'s
 default serving signature.
 
-Confirmed blocked in this environment specifically: `pip index versions
-tensorflow` returns no matching distribution for this project's Python
-version, so this adapter has not been run here -- treat it the same as
-frameworks/executorch_adapter.py and frameworks/tvm_adapter.py: written to
-the documented API, not verified, re-check against current onnx2tf/
-TensorFlow docs before relying on it.
+Originally confirmed blocked: `pip index versions tensorflow` returned no
+matching distribution for this project's Python version (3.14, on this
+project's earlier Windows dev machine). Re-checked directly on this
+project's move to Ubuntu, on Python 3.13: `pip install tensorflow`
+succeeds cleanly now -- TensorFlow 2.21.0 ships a real `cp313` wheel (this
+looks like a Python-version-ceiling fix that's landed since the original
+check, not something OS-specific; TensorFlow 2.21.0 also ships a `cp313`
+`win_amd64` wheel, so this was likely never Windows-specific to begin
+with). `import tensorflow` works, correctly falls back to CPU (no GPU on
+this machine), confirmed with a real `tf.constant(...)` op.
+
+Actually running this adapter through `python main.py` (previously
+impossible) surfaced two further, real bugs, both in `onnx2tf` itself, not
+this adapter's own code:
+
+1. `onnx2tf`'s own PyPI metadata under-declares its dependencies --
+   `import onnx2tf` fails in stages needing `tf_keras`, `onnx_graphsurgeon`,
+   `ai_edge_litert`, then `sng4onnx` in turn, none pulled in automatically
+   by `pip install onnx2tf`. Installed all four directly.
+
+2. With imports fixed, `onnx2tf.convert(...)` itself then fails:
+   `ValueError: This file contains pickled (object) data. ... use
+   allow_pickle=`. Traced directly: `onnx2tf` auto-detects an image-shaped
+   input (NHWC, 3 channels, confirmed this project's NCHW ResNet18 export
+   gets there after onnx2tf's own internal transpose) and downloads a
+   bundled calibration test image via `np.load(f)` with no
+   `allow_pickle=True` -- current numpy (2.x) refuses to unpickle object
+   arrays by default for security reasons the version this file predates
+   didn't enforce. The pinned `onnx2tf==1.28.8` this project's dependency
+   resolution settles on (given `tensorflow==2.21.0` already installed)
+   has this bug; the latest release (2.6.8) looks likely to have moved
+   past it, but pins `setuptools==81.0.0` exactly -- directly conflicting
+   with this project's own `setuptools==80.9.0` pin (needed elsewhere for
+   `pkg_resources` availability, see cv_frameworks/mmdetection_adapter.py's
+   docstring), so upgrading isn't a clean fix without risking a regression
+   to every other adapter that pin protects. Not pursued further --
+   confirmed no side effects (setuptools pin unchanged, no partial state
+   left behind). Revisit once a released `onnx2tf` fixes this without
+   raising its own `setuptools` floor past 80.9.0.
+
+Still treat this the same as frameworks/executorch_adapter.py and
+frameworks/tvm_adapter.py: written to the documented API, not verified
+end-to-end -- but the reason has moved from "TensorFlow doesn't install
+here" to "TensorFlow installs and runs fine, onnx2tf's own bugs are the
+remaining wall."
 
 onnx2tf/tensorflow/torch are all imported lazily so this module still
 registers cleanly -- and shows up correctly in `python main.py --list` --
