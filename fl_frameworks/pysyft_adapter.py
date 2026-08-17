@@ -33,6 +33,26 @@ system, a transitive dependency's, and now two dependencies removed
 (pyarrow's own build tooling, not even PySyft's). Revisit once PySyft
 updates its pyarrow pin to a version with a prebuilt wheel for this
 Python, or once pyarrow's legacy sdist version-detection is fixed upstream.
+
+Confirmed directly on Ubuntu too, since this project moved off its
+original Windows dev machine: `pyarrow==17.0.0`'s own file index on PyPI
+has zero wheels for this Python version on *any* platform (only up through
+cp312) -- so the sdist-source-build fallback, and everything underneath
+it, is identical regardless of OS. `pip install syft` still hits a
+`pkg_resources` wall building pyarrow's metadata (this time because
+pyarrow's own `pyproject.toml` declares `setuptools>=64` unpinned, and
+pip's isolated build environment resolved setuptools 84.0.0 -- past the
+point where `pkg_resources` was removed -- even with this project's own
+80.9.0 pin constrained at the top level; `--no-build-isolation` routes
+around that same class of gap the same way it does elsewhere in this
+project). Past that, a separate transitive dependency (`gevent`, pulled in
+by `syft`/`boto3`'s own chain) hits its own, unrelated wall: no cp313
+wheel either, and its cached sdist's Cython source uses the Python 2 `long`
+builtin, which modern Cython 3.x correctly refuses to compile on Python 3.
+Not pursued further -- two independent transitive dependencies each stuck
+on old, unmaintained source that predates this Python version, confirming
+this was correctly diagnosed as a Python-version ceiling from the start,
+not an OS-specific one.
 """
 from core.registry import FL_FRAMEWORKS
 
