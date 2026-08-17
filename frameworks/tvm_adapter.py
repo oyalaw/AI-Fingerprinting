@@ -1,59 +1,61 @@
-"""Apache TVM framework adapter -- real implementation.
+"""Apache TVM framework adapter -- rewritten against current TVM (0.26.0),
+real implementation, verified end-to-end.
 
-TVM is a compiler stack: it imports a traced PyTorch graph into its own
-Relay IR, compiles it ahead-of-time for a target (here, `llvm` -- generic
-CPU codegen, no special hardware needed), and runs the compiled module
-through TVM's own graph executor runtime. Follows TVM's own documented
-"Compile PyTorch Models" workflow:
+TVM is a compiler stack: it imports a captured PyTorch graph into its own
+IR, compiles it ahead-of-time for a target (here, `llvm` -- generic CPU
+codegen, no special hardware needed), and runs the compiled module
+through TVM's own runtime. This adapter originally followed TVM's classic
+Relay IR workflow (`torch.jit.trace` -> `relay.frontend.from_pytorch` ->
+`relay.build` -> `tvm.contrib.graph_executor`) -- see this project's own
+git history for that version and the docstrings on
+distributed_frameworks/colossalai_adapter.py and friends for how the
+Windows->Ubuntu re-investigation pass found that Relay IR has been fully
+removed from TVM 0.26.0 (`from tvm import relay` now raises
+`ImportError: cannot import name 'relay' from 'tvm' ... Did you mean:
+'relax'?`). Rewritten here against TVM's current Relax IR instead, TVM's
+own documented replacement:
 
-  1. `torch.jit.trace` the architecture's PyTorch module (TVM's PyTorch
-     frontend consumes a traced/scripted TorchScript graph, not a raw
-     nn.Module).
-  2. `tvm.relay.frontend.from_pytorch` imports it into Relay IR.
-  3. `relay.build` compiles it for `target="llvm"`.
-  4. `tvm.contrib.graph_executor.GraphModule` loads and runs the compiled
-     module.
+  1. `torch.export.export` the architecture's PyTorch module to an
+     `ExportedProgram` (TVM's current PyTorch frontend consumes this,
+     not a `torch.jit.trace`d graph -- the same ahead-of-time capture
+     step frameworks/executorch_adapter.py uses).
+  2. `tvm.relax.frontend.torch.from_exported_program(...,
+     keep_params_as_input=True, unwrap_unit_return_tuple=True)` imports
+     it into a Relax `IRModule`. `keep_params_as_input` keeps weights as
+     explicit function arguments rather than baked-in constants, so
+     `relax.frontend.detach_params` can pull them out as a plain
+     parameter list to pass at call time (TVM's own documented pattern
+     for this, confirmed directly against its docstring/example);
+     `unwrap_unit_return_tuple` makes a single-output model return a
+     plain tensor instead of a one-element `R.Tuple`, matching every
+     other framework adapter's plain-tensor return.
+  3. `tvm.compile(mod, target)` compiles the module -- confirmed directly
+     this is the current top-level entry point (`relax.build` still
+     exists too and does the same thing, `tvm.compile` is what current
+     TVM's own API surface leads with).
+  4. `tvm.relax.VirtualMachine(executable, device)` loads the compiled
+     executable; calling `vm["main"](input_tensor, *param_tensors)` runs
+     it, the Relax runtime's documented calling convention.
 
-Environment note, updated after installing a real C/C++ compiler
-(Visual Studio Build Tools) specifically to unblock this and several
-other stubs sharing the "no compiler" root cause: `apache-tvm-ffi` (the
-small component that previously failed to build) now compiles and
-installs successfully. But the main `apache-tvm` package ships its own
-*prebuilt* `tvm_runtime` native library, and loading it fails with
-`OSError: [WinError 127] The specified procedure could not be found` --
-a low-level DLL/binary-compatibility issue in a precompiled artifact,
-not something the compiler helps with (we didn't build this DLL, TVM's
-own release process did). Different, final root cause from the original
-"no compiler" finding -- the compiler genuinely fixed one layer and
-revealed a new one underneath. This adapter still follows TVM's
-documented API as closely as this project's other adapters follow
-theirs, but has NOT been execution-verified. TVM has also been
-mid-transition between its classic Relay IR (used here, still documented
-and supported) and a newer Relax IR in recent releases -- re-check this
-against current TVM docs before relying on it, since which IR is the
-recommended default has shifted across versions.
+`tvm.nd.array` (the old Relay-era way to wrap a numpy array for TVM) is
+also gone -- confirmed directly (`AttributeError: module 'tvm' has no
+attribute 'nd'`); its replacement is `tvm.runtime.tensor(array, device)`.
 
-Re-checked on Ubuntu: both of the above are now moot, replaced by a
-bigger, final finding. `apache-tvm` 0.26.0 now ships a real prebuilt
-`manylinux` wheel with no separate `apache-tvm-ffi` compiler step needed
-at all (confirmed: plain `pip install apache-tvm` succeeds cleanly, no
-compiler invoked) -- and the WinError-127 native-library-loading issue is
-confirmed gone too: `import tvm.runtime` loads the prebuilt runtime
-cleanly on Linux, no error. But the "mid-transition" warning above turned
-out to be exactly right: **Relay IR is gone**. Confirmed directly:
-`from tvm import relay` raises `ImportError: cannot import name 'relay'
-from 'tvm' (... Did you mean: 'relax'?)` -- this release doesn't ship the
-`tvm.relay` module this adapter's code (`relay.frontend.from_pytorch`,
-`relay.build`) is written against at all, only `tvm.relax`, confirmed
-separately to import fine. Relax isn't a drop-in rename -- its PyTorch
-frontend (`relax.frontend.torch.from_exported_program`, operating on a
-`torch.export`-style `ExportedProgram` rather than a `torch.jit.trace`d
-graph) and its own build/runtime API are a different surface entirely, the
-same shape of rewrite ExecuTorch's own `torch.export`-based pipeline
-uses. Every environment wall this docstring traced is now resolved; what's
-left is a genuine rewrite against TVM's current Relax API, not an
-environment blocker -- left as a stub for that reason, tracked here rather
-than silently reused under the old Relay code.
+**Verified end-to-end**: confirmed directly with a small hand-written
+`nn.Linear` module first (compiled output matched the real PyTorch
+forward pass exactly, `np.allclose(..., atol=1e-4)` true), then with this
+project's real ResNet18 (via `PyTorch` framework's `load_model`,
+`Image Classification`/`Synthetic`): the compiled Relax module's
+`(1, 10)` output matches the real PyTorch model's own forward pass output
+within `atol=1e-3` (real conv/batchnorm/pooling ops through the full
+pipeline, not just a toy graph). Also confirmed a real client/server
+roundtrip through `python main.py` itself (`framework: TVM`,
+`architecture: ResNet18`, `dataset: Synthetic`) -- both requests served
+correctly, `ground_truth.json` correctly recorded `"level1_framework":
+"TVM"`. Note for anyone re-running this: `tvm.compile`'s LLVM codegen for
+a ResNet18-sized graph takes real wall-clock time (single-digit seconds
+once warm, longer on a cold run) -- give the server a real head start
+before starting the client, the same as any other framework here.
 
 torch/tvm are imported lazily so this module still registers cleanly --
 and shows up correctly in `python main.py --list` -- on a machine without
@@ -65,7 +67,6 @@ from core.registry import FRAMEWORKS
 from frameworks.base import FrameworkAdapter
 
 _DTYPE_NAME_TO_CODE = {"float32": 0, "float64": 1, "int64": 2, "int32": 3}
-_INPUT_NAME = "input0"
 
 
 def _np_dtype_map():
@@ -75,8 +76,10 @@ def _np_dtype_map():
 
 
 class TVMModel:
-    def __init__(self, graph_module):
-        self.graph_module = graph_module
+    def __init__(self, vm, param_tensors, device):
+        self.vm = vm
+        self.param_tensors = param_tensors
+        self.device = device
 
 
 class TVMAdapter(FrameworkAdapter):
@@ -84,10 +87,11 @@ class TVMAdapter(FrameworkAdapter):
         import tvm  # noqa: F401 -- fail fast here if not installed
 
     def load_model(self, architecture_entry, config):
-        import tvm
+        import numpy as np
         import torch
-        from tvm import relay
-        from tvm.contrib import graph_executor
+        import tvm
+        from tvm import relax
+        from tvm.relax.frontend.torch import from_exported_program
 
         torch_model = architecture_entry.build(self, config)
         torch_model.eval()
@@ -96,32 +100,35 @@ class TVMAdapter(FrameworkAdapter):
         example_input = torch.randn(1, *input_shape)
 
         with torch.no_grad():
-            traced_model = torch.jit.trace(torch_model, example_input).eval()
+            exported_program = torch.export.export(torch_model, (example_input,))
 
-        shape_list = [(_INPUT_NAME, example_input.shape)]
-        mod, params = relay.frontend.from_pytorch(traced_model, shape_list)
+        mod = from_exported_program(
+            exported_program, keep_params_as_input=True, unwrap_unit_return_tuple=True
+        )
+        mod, params = relax.frontend.detach_params(mod)
 
         target = tvm.target.Target("llvm")
-        with tvm.transform.PassContext(opt_level=3):
-            lib = relay.build(mod, target=target, params=params)
+        executable = tvm.compile(mod, target)
 
         device = tvm.cpu(0)
-        graph_module = graph_executor.GraphModule(lib["default"](device))
-        return TVMModel(graph_module)
+        vm = relax.VirtualMachine(executable, device)
+        param_tensors = [tvm.runtime.tensor(p.numpy().astype(np.float32), device) for p in params["main"]]
+
+        return TVMModel(vm, param_tensors, device)
 
     def predict(self, model, input_tensor):
         import numpy as np
         import torch
+        import tvm
 
         array = input_tensor.detach().cpu().numpy().astype(np.float32)
         if array.ndim == 3:
             array = array[None, ...]
         array = np.ascontiguousarray(array)
 
-        model.graph_module.set_input(_INPUT_NAME, array)
-        model.graph_module.run()
-        output = model.graph_module.get_output(0).numpy()
-        return torch.from_numpy(output)
+        tvm_input = tvm.runtime.tensor(array, model.device)
+        output = model.vm["main"](tvm_input, *model.param_tensors)
+        return torch.from_numpy(output.numpy())
 
     def serialize(self, tensor) -> bytes:
         import numpy as np
