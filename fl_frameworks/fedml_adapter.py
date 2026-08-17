@@ -16,6 +16,16 @@ in the standard library. `pathtools` itself has been unmaintained for years
 depends on wandb, which still depends on an abandoned package." Revisit if
 FedML/wandb drop the pathtools dependency, or if running on an older Python
 becomes acceptable for this project.
+
+Re-checked directly on this project's move to Ubuntu: identical failure,
+same traceback, same `ModuleNotFoundError: No module named 'imp'`. FedML
+pins `wandb==0.13.2` exactly, so it always resolves that same old,
+pathtools-dependent wandb release regardless of what newer wandb versions
+exist elsewhere (this project separately has a current wandb installed
+for fl_frameworks/fedscale_adapter.py's investigation, unrelated -- FedML
+never sees it, its own pin controls what pip resolves for it). Confirms
+this is a Python-version ceiling in FedML's own dependency pin, not
+something the OS migration touches.
 """
 from core.registry import FL_FRAMEWORKS
 
