@@ -63,10 +63,11 @@ Written to each framework's documented API but **not execution-verified** in thi
 
 - **Federated learning / distributed training**: every adapter below used to hardcode `torchvision.datasets.CIFAR10` directly, completely ignoring `config.dataset` -- confirmed directly this was a real, silent ground-truth-mislabeling risk (a config with `dataset: Synthetic` would validate and run "successfully" while actually training on CIFAR10 underneath). Fixed: `core/training_data.py`'s `build_classification_dataset()` now loads whichever dataset was actually selected via the same `DATASETS`/`APPLICATIONS` registry abstraction `paradigm=inference` already uses, and every adapter below wraps that instead of its own hardcoded loader. Scoped to applications that are genuinely classification-shaped (one scalar string label per independent sample, `CrossEntropyLoss` over class logits) -- confirmed directly for three: **Image Classification** (`ResNet18`/`ResNet50`/`MobileNetV2`/`ViT`, `num_classes=10`, paired with `CIFAR10`/`Synthetic`), **Sentiment Analysis** (`BERT`/`DistilBERT`, `num_classes=2`, paired with `IMDB`/`SST2` -- both yield exactly `"negative"`/`"positive"`), and **Activity Recognition** (`LSTM`/`GRU`, `num_classes=6`, paired with `UCI HAR` -- exactly 6 activity labels). Each architecture's `num_classes` is now real registry metadata (`architectures/*.py`'s `.register(..., num_classes=N)`), so `build_classification_dataset()` validates the observed label count against the *specific* architecture picked, not a blanket constant. **Node Classification (GCN) does not fit, confirmed structurally, not by policy**: `datasets/karate_club.py`'s `samples(n)` yields the *same* whole-graph array `n` times, each paired with the full list of all 34 node labels at once (a list, not a scalar -- would crash the label-set comprehension outright), and GCN's forward pass is transductive (one graph in, all-node logits out per call, no batch-of-independent-samples concept at all) -- this needs a fundamentally different single-graph training loop, not a generalized version of the per-sample one. Every generative/structured-output application (Text Generation, Image Generation, Speech Recognition, Object Detection, Segmentation, Image Reconstruction) has no scalar classification label either and stays excluded the same way. See `core/config.py`'s `FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES` for the enforced set (both `--interactive` and `validate()` share it, so a hand-written `config.yaml` hitting a mismatch -- including an architecture/application mismatch like `architecture: BERT` + `application: Image Classification` -- is rejected with a clear error too, not just the guided prompt).
 - **Federated learning**: Flower, partitioned across simulated clients -- verified end-to-end with `architecture: ResNet18`/`dataset: CIFAR10` (the original path, confirmed still working unchanged), `architecture: ResNet18`/`dataset: Synthetic` (confirmed `ground_truth.json` now correctly records `"dataset": "Synthetic"`, not silently CIFAR10), and `architecture: BERT`/`application: Sentiment Analysis`/`dataset: IMDB` (the first non-Image-Classification FL combo -- confirmed `ground_truth.json` correctly records all three).
-- **Federated learning (not execution-verified here)**: FedLab -- same combo, communicates over `torch.distributed`'s gloo/TCP rendezvous (same mechanism as the DistributedDataParallel adapter below, verified working in isolation on this machine). A real bug was found and fixed (`SyncServerHandler` was imported from the wrong module). But the full client/server pair hangs indefinitely right after connecting: an isolated test of just FedLab's own post-connect handshake shows the client's `setup()` call returns normally while the server's matching `setup()` call -- blocked on a `recv()` for that same message -- never does. Investigation points at a FedLab/PyTorch version incompatibility, but that's not a confirmed root cause; treat frameworks/fedlab_adapter.py the same as executorch_adapter.py/tvm_adapter.py, and re-run the isolated setup diagnostics in its docstring yourself before relying on it. Its data loading was updated to the same `core/training_data.py` loader for consistency, but that specific change couldn't be verified end-to-end either, for the same pre-existing hang.
-- **Federated learning (not execution-verified here, and wouldn't produce real network traffic even where it runs)**: NVFlare -- same combo, via NVFlare's Client API (`FedJob` + `FedAvg` controller + `ScriptRunner` running a real standalone training script). Two separate, serious caveats: (1) `import nvflare` fails outright on this Windows machine -- confirmed directly, its `__init__.py` unconditionally pulls in `nvflare.fuel.f3.cellnet.net_agent`, which does `import resource`, the POSIX-only resource-limits module that doesn't exist on Windows at all; NVFlare requires Linux/macOS. (2) Separately and more fundamentally: this adapter uses `FedJob.simulator_run()`, the simplest API match for "run a federated round from one Python call" -- but simulator mode runs the server and all clients as in-process threads over in-memory queues, not real network sockets, so even on a supported OS this configuration produces no capturable traffic at all. Real traffic needs NVFlare's separate POC/production deployment mode (`nvflare provision` + a real `start.sh` process per site), which is out of scope here. Unlike FedLab/ExecuTorch/TVM, this one wouldn't serve this project's purpose even if it ran successfully in its current form. Its generated client script was updated to call the shared loader too, but whether NVFlare's `ScriptRunner(launch_external_process=False)` actually makes this project's modules importable inside that script is unverified, for the same pre-existing import failure.
+- **Federated learning, now verified end-to-end**: FedLab -- same combo, communicates over `torch.distributed`'s gloo/TCP rendezvous (same mechanism as the DistributedDataParallel adapter below, verified working in isolation on this machine). A real bug was found and fixed (`SyncServerHandler` was imported from the wrong module). Originally hung indefinitely right after connecting on this project's Windows dev machine, root cause not fully isolated at the time. Re-run unchanged after this project moved to Ubuntu: no hang at all, verified directly with both a 1-client and a 2-client run completing the full message exchange cleanly and `ground_truth.json` correctly recording FedLab -- see fl_frameworks/fedlab_adapter.py's docstring.
+- **Federated learning (not execution-verified here, and wouldn't produce real network traffic even where it runs)**: NVFlare -- same combo, via NVFlare's Client API (`FedJob` + `FedAvg` controller + `ScriptRunner` running a real standalone training script). Two separate, serious caveats, the first now resolved: (1) `import nvflare` used to fail outright on this project's Windows dev machine -- its `__init__.py` unconditionally pulls in `nvflare.fuel.f3.cellnet.net_agent`, which does `import resource`, the POSIX-only resource-limits module that doesn't exist on Windows at all. Confirmed resolved after this project moved to Ubuntu: `import nvflare` works cleanly, `resource` is a normal stdlib module on Linux. That let this adapter's code run for the first time, surfacing two further real bugs against the current NVFlare API (one fixed -- `simulator_run()` no longer accepts `n_clients=` alongside explicit `.to()` calls; one is a genuine NVFlare bug -- its `job.to(model, "server")` reflection can't JSON-serialize a raw class attribute torchvision's `resnet18()` stores) -- see fl_frameworks/nvflare_adapter.py's docstring. (2) Separately and more fundamentally, unaffected by any of this: this adapter uses `FedJob.simulator_run()`, the simplest API match for "run a federated round from one Python call" -- but simulator mode runs the server and all clients as in-process threads over in-memory queues, not real network sockets, so even on a supported OS and even once the bugs above are fixed, this configuration produces no capturable traffic at all. Real traffic needs NVFlare's separate POC/production deployment mode (`nvflare provision` + a real `start.sh` process per site), which is out of scope here. Unlike FedLab, this one wouldn't serve this project's purpose even if it ran successfully in its current form.
 - **Distributed training**: PyTorch `DistributedDataParallel` (multi-process gradient sync) -- verified end-to-end with real 2-process coordinator+worker runs on `architecture: ResNet18`/`dataset: Synthetic` and `architecture: LSTM`/`application: Activity Recognition`/`dataset: UCI HAR` (the first non-Image-Classification distributed-training combo), both ranks completing cleanly with correct ground truth for each.
 - **Distributed training**: FairScale (`OSS` optimizer-state sharding + `ShardedDataParallel`, ZeRO stage 1) -- layers on the exact same gloo/TCP process group as the DDP adapter (confirmed directly from `OSS`/`ShardedDataParallel`'s real constructor signatures). Originally only spot-verified via an isolated two-rank synthetic-data script, not through `main.py`, because CIFAR10's ~170MB train split downloaded too slowly in this environment (~40 min). Switching to `dataset: Synthetic` removes that slowness entirely (no download at all) -- this is now the first real, full `main.py` run of this adapter, both ranks completing cleanly with correct ground truth.
+- **Distributed training**: DeepSpeed (ZeRO stage 1 via `deepspeed.initialize()`) -- originally a stub, blocked on this project's Windows dev machine by its op-builder producing zero compilable sources for a Windows/no-CUDA target. Re-investigated after this project moved to Ubuntu: that wall doesn't reproduce at all -- plain `pip install deepspeed` succeeds cleanly (no ahead-of-time op compilation by default) and `deepspeed.initialize()` genuinely constructs a `DeepSpeedEngine` wrapping ZeRO stage 1 over a live gloo process group, the same technique FairScale's `OSS` implements independently. Needed `zero_allow_untested_optimizer: True` since DeepSpeed's own sanity check flags plain SGD as untested for ZeRO. Verified end-to-end: an isolated two-rank script first, then a full two-process `main.py` run (ResNet18/Image Classification/Synthetic), both ranks completing cleanly with `ground_truth.json` correctly recording DeepSpeed.
 - **Transport**: TCP and TLS (self-signed dev cert auto-generated), plus HTTP -- a plain `http.server`/`http.client` implementation of the same `Transport` interface, standard library only. HTTP is request/response, not the persistent bidirectional stream TCP/TLS use, so the server side bridges this project's synchronous send()/recv() calls onto it with a small queue: the HTTP handler (its own thread per request) hands each request body to the main thread via one queue and blocks on a second queue for the response bytes to write back -- correct here because exactly one request is ever in flight (this project's client always waits for the full response before sending the next). Verified end-to-end including a real client/server roundtrip with correct ground truth (`"transport": "HTTP"`).
 - **Transport**: gRPC, the last transport stub -- turned out not to need the protobuf schema its old docstring assumed. gRPC's low-level Python API supports raw-bytes unary-unary calls directly (`grpc.unary_unary_rpc_method_handler` + `grpc.method_handlers_generic_handler` with identity serializers), no `.proto` file or generated stub code anywhere -- confirmed directly with a minimal roundtrip before writing the real adapter. Bridges gRPC's single-call request/response shape onto this project's split send()/recv() interface the same way the HTTP transport already bridges HTTP's: a small queue pair on the server side, a stash-the-response pattern on the client side. Verified end-to-end with a real two-process client/server run (`python main.py --config ... --role server` / `--role client`, real ResNet18/CIFAR10, `capture: false`) -- 3/3 requests served correctly, ground truth correctly recorded `"transport": "gRPC"`.
 
@@ -78,7 +79,7 @@ stayed stubs, has a docstring documenting a specific, confirmed root cause
 rather than a placeholder. `family` (6/6), `architecture` (17/17),
 `application` (10/10), `dataset` (8/8), `device` (11/11), and `transport`
 (4/4) are fully real. The remaining registries (`framework` 22/23,
-`fl_framework` 3/16, `distributed_framework` 2/10, `llm_framework` 3/10,
+`fl_framework` 3/16, `distributed_framework` 3/10, `llm_framework` 3/10,
 `cv_framework` 3/8, `speech_framework` 3/6, `graph_framework` 1/4,
 `diffusion_framework` 1/4) still have stubs, but every one of them was
 directly retried -- including a second pass after installing a C/C++
@@ -92,9 +93,8 @@ another retry or pip flag fixes from here:
 - **No installable Python package exists at all** (e.g. Kaldi, ComfyUI,
   Stable Diffusion WebUI, Text Generation Inference, LEAF, StellarGraph,
   Megatron-LM, PaddleFL)
-- **Hardware/OS this machine doesn't have** (TensorRT LLM, ExLlamaV2's
-  CUDA-only kernels, ColossalAI requiring WSL, BytePS needing `make`,
-  Horovod needing CMake)
+- **Hardware this machine doesn't have** (TensorRT LLM, ExLlamaV2's
+  CUDA-only kernels, vLLM's plain PyPI wheel defaulting to a CUDA target)
 - **A different ML framework family this project isn't built for**
   (Spektral/PaddleFL/PaddleDetection on TensorFlow/PaddlePaddle,
   FedJAX/Alpa on JAX -- this project's shared architecture contract is
@@ -102,11 +102,18 @@ another retry or pip flag fixes from here:
 - **Remote infrastructure this project can't stand up** (FATE's deployed
   cluster, Ollama's separately-running server, Clara FL already covered
   by the implemented NVFlare entry under its current name)
-- **A Python-version ceiling upstream hasn't lifted yet** (OpenFL,
-  InvokeAI, vLLM's Windows-incompatible `uvloop` dependency)
+- **A Python-version ceiling upstream hasn't lifted yet** (OpenFL, InvokeAI,
+  FedML's `wandb==0.13.2` pin needing the Python-3.12-removed `imp` module,
+  PySyft/TensorFlow Federated's old `pyarrow`/`grpcio` pins with no wheel
+  for this Python)
 - **A permanent standard-library removal an old dependency pin never
   adapted to** (PaddleDetection's `numpy==1.23.5` needing the
   Python-3.12-removed `distutils` module)
+- **A genuine bug or API removal in the dependency itself, found only by
+  actually running it** (Horovod's own source missing a `#include <string>`
+  that a modern GCC no longer tolerates, BytePS/ColossalAI's dependency
+  pins conflicting with this project's current stack, TVM's current
+  release having fully removed the Relay IR this adapter targets)
 - **Would just duplicate an already-implemented entry under a different
   name** (Metal Performance Shaders -- Apple has no standalone Python API
   for it distinct from the already-real `MPS Backend`/`CoreML` entries)
@@ -114,6 +121,43 @@ another retry or pip flag fixes from here:
 Promoting any of these further would mean a genuinely new environment
 decision -- installing WSL, standing up Docker, or running on different
 hardware -- not another investigation pass.
+
+### Re-investigated on Ubuntu
+
+This project's dev environment moved from Windows to Ubuntu 24.04
+(Python 3.13, down from the earlier Windows machine's 3.14). Every stub
+whose original blocker looked Windows- or wheel-availability-specific was
+retried directly rather than assumed fixed -- see each adapter's own
+docstring for the full story, this is just the roundup:
+
+- **Resolved, now real end-to-end**: `distributed_framework: DeepSpeed`
+  (ZeRO stage 1, verified via a real two-process `main.py` run --
+  distributed_frameworks/deepspeed_adapter.py) and
+  `fl_framework: FedLab` (the original hang doesn't reproduce at all on
+  Linux, verified with both 1- and 2-client runs --
+  fl_frameworks/fedlab_adapter.py).
+- **Platform gate confirmed resolved, but a different real wall found
+  underneath**: ColossalAI (installs, but its own pins downgrade this
+  project's stack), vLLM (uvloop works fine on Linux, but the plain wheel
+  targets CUDA), BytePS (compiles fine, but calls a removed PyTorch API),
+  Horovod (no libuv wall on Linux, but its source needs a missing
+  `#include <string>` under modern GCC), NVFlare (imports fine now, but
+  hits two further real bugs -- one fixed, one is NVFlare's own bug).
+- **Confirmed to reproduce identically regardless of OS** (Python-version
+  ceilings, not platform gates): PaddleDetection, PySyft, DGL, OpenFL,
+  FedML, TensorFlow Federated.
+- **Wheel-availability wall resolved, revealing the real remaining work is
+  writing a new adapter, not an environment fix**: TensorFlow (installs
+  and runs; `onnx2tf`'s own bugs are the new wall), FedScale (TensorFlow
+  import chain resolved), Ray/FedGraph/Ray Train (Ray now ships a `cp313`
+  wheel; FedGraph's full dependency tree, including native `torch-scatter`/
+  `torch-sparse` extensions, now genuinely compiles and installs),
+  ExecuTorch (installs; the export pipeline itself now hangs), TVM
+  (installs with no compiler needed at all; its Relay IR is fully removed
+  from the current release, only Relax remains).
+- **Installs now, but still a structural dead end**: Alpa (its own pins
+  now resolve, revealing a genuine `jax`/`jaxlib` version mismatch bug,
+  moot either way given its JAX-native architecture mismatch).
 
 ### Fixed: sub-framework validation was silently dead code
 
