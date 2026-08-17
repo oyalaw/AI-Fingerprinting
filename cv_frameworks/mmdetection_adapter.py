@@ -34,6 +34,13 @@ via regex/AST instead of exec), or if this project ever runs on an older
 Python. This blocks the whole OpenMMLab family sharing mmcv -- see
 cv_frameworks/mmsegmentation_adapter.py and openmmlab_adapter.py, which
 hit the identical wall.
+
+Re-confirmed directly on Ubuntu (Python 3.13.9, one minor version below
+the original 3.14 check): `pip install --no-build-isolation mmcv` fails
+with the exact same `KeyError: '__version__'` at the same `get_version()`
+call site. A CPython language-semantics change reproduces identically
+everywhere that Python version runs -- not something the OS migration
+could have changed.
 """
 from core.registry import CV_FRAMEWORKS
 

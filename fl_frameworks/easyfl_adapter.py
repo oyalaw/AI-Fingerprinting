@@ -16,6 +16,10 @@ EasyFL bug. Consistent with EasyFL having had no PyPI release since 2022
 -- likely abandoned, so unlikely to ever adopt a fixed pattern itself.
 Revisit only if a fixed release appears, or if this project ever runs on
 an older Python.
+
+Re-confirmed directly on Ubuntu (Python 3.13.9): `pip install easyfl`
+fails with the identical `KeyError: '__version__'`, same call site. A
+CPython language-semantics change, unaffected by the OS migration.
 """
 from core.registry import FL_FRAMEWORKS
 

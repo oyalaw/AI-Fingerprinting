@@ -11,6 +11,11 @@ build failure -- purely a Python-version ceiling. Revisit once InvokeAI
 ships a release supporting this Python version (`pip index versions
 invokeai` is the quick way to check), or if this project ever runs on an
 older Python.
+
+Re-checked on Ubuntu (Python 3.13.9, one minor version below the original
+3.14 check): still fails identically -- the newest release's `<3.13`
+ceiling doesn't admit 3.13.9 either. A Python-version ceiling, unaffected
+by the OS migration.
 """
 from core.registry import DIFFUSION_FRAMEWORKS
 
