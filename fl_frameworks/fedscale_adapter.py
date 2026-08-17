@@ -46,6 +46,32 @@ and its gRPC `JobServiceServicer`/`JobServiceStub` job-submission protocol
 mapped onto this project's client/server roles. That's a genuinely new
 adapter to write, not another investigation pass -- left as a stub for
 that reason, not because anything here still fails to install or import.
+
+Investigated exactly how wide that "own config-object API" surface is,
+rather than leaving that vague. `Aggregator.__init__(self, args)` takes a
+single `args` namespace -- confirmed directly by loading FedScale's own
+default (`fedscale.cloud.config_parser.args`): it's not a handful of
+fields, it's roughly 90, and they reveal what FedScale actually is --
+not a library to call, but a full cloud/mobile-device-simulation
+*platform* with its own launcher model. `executor_configs` (a string like
+`'127.0.0.1:[1]'` naming IP:core-count pairs), `ps_ip`/`ps_port` (its own
+parameter-server addressing, separate from this project's own `host`/
+`port`), `device_avail_file`/`device_conf_file` (simulated per-device
+availability traces), `model_zoo: 'torchcv'` + `model: 'shufflenet_v2_x2_0'`
+(models selected from FedScale's own zoo by name, not handed a real
+`nn.Module` directly), and `wandb_token` (logging assumed mandatory) are
+all representative, not edge cases. Bridging this onto this project's
+simple two-role (`--role server`/`--role client`) architecture -- which
+every other FL adapter here does directly against a constructor taking a
+handful of arguments -- would mean either faking out most of that
+90-field surface with placeholder values (fragile, likely to break on
+whatever FedScale code path actually reads them) or building real
+adapter-side support for FedScale's own device-simulation/executor
+launcher concept, which this project has no equivalent of anywhere else.
+Concretely larger than distributed_frameworks/ray_train_adapter.py's or
+frameworks/tvm_adapter.py's rewrites (each a few hours against a stable,
+single-purpose API). Left as a stub for that reason, tracked here with
+the concrete scope rather than a vague "needs more work."
 """
 from core.registry import FL_FRAMEWORKS
 

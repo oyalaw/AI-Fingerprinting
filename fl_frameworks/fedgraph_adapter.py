@@ -53,6 +53,38 @@ adapter is real engineering (FedGraph's own federated GNN training API,
 distinct from this project's PyTorch/CIFAR10 classification loop every
 other FL adapter shares), not an environment blocker -- left as a stub for
 that reason.
+
+Investigated exactly how much engineering, rather than leaving that as a
+vague estimate: `fedgraph`'s real entry points are task-specific --
+`fedgraph.federated_methods.run_NC`/`run_GC`/`run_LP` (node
+classification / graph classification / link prediction), each with its
+own `Trainer_*`/`Server_*` classes. Confirmed directly, none of them take
+a dataset object -- `fedgraph.data_process.data_loader(args:
+attridict.AttriDict)` expects an `args` config naming one of FedGraph's
+own bundled benchmark datasets (citation graphs like Cora/CiteSeer for
+`run_NC`, TU datasets like MUTAG/PROTEINS for `run_GC`, MovieLens for
+`run_LP`) and returns FedGraph's own graph-partitioned data structures,
+not something this project's `datasets/karate_club.py` (or any other
+registry entry) can be swapped in for. `federated_methods` also imports
+`ray` directly and builds its trainers as Ray actors internally -- its
+own distribution mechanism, unrelated to
+distributed_frameworks/ray_train_adapter.py's `torch.distributed`-based
+one, or to any FL adapter here.
+
+This is the same structural wall README.md's own FL/distributed
+generalization section already documents for Node Classification/GCN in
+this project's *own* code ("this needs a fundamentally different
+single-graph training loop, not a generalized version of the per-sample
+one") -- FedGraph's `run_NC` would hit exactly that wall, plus wants its
+own benchmark dataset story on top. Concretely larger than
+distributed_frameworks/ray_train_adapter.py's or
+frameworks/tvm_adapter.py's rewrites (each a few hours against a stable,
+single-purpose API): a real FedGraph adapter means either building a new
+graph-dataset/transductive-training pipeline this project doesn't have at
+all, or adopting FedGraph's own benchmark datasets and accepting they
+won't fit this project's existing 5-level ground-truth taxonomy the way
+every other dataset here does. Left as a stub for that reason, tracked
+here with the concrete scope rather than a vague "needs more work."
 """
 from core.registry import FL_FRAMEWORKS
 
