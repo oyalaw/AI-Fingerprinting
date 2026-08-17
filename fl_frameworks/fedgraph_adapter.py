@@ -21,14 +21,47 @@ the attempt (torch/torchvision/numpy versions unchanged, nothing left
 partially installed). Revisit once Ray ships a compatible wheel -- unlike
 the original prediction, there's no compiler-toolchain wall left in the
 way once that happens.
+
+That revisit condition is now met. Re-checked on Ubuntu: `ray` 2.57.0
+ships a real `cp313` `manylinux2014_x86_64` wheel now (confirmed via
+Ray's own PyPI file index -- this looks like Ray shipping a newer Python
+version's wheel since the original check, not something OS-specific).
+With that gone, `pip install --no-build-isolation fedgraph` genuinely
+succeeds end-to-end this time: `torch-cluster`/`torch-scatter`/
+`torch-sparse`/`torch-spline-conv` all actually compile for real (several
+minutes of real `g++`/`cc1plus` C++ extension builds, confirmed directly
+watching the process), and both `import fedgraph` and `import ray` work
+cleanly afterward. Every wall this docstring traced -- build-isolation
+blindness, the compiler-toolchain prediction, and Ray's wheel gap -- is
+now resolved.
+
+Reverted afterward rather than left installed: `fedgraph`'s own dependency
+tree pulls in a large, unrelated surface for a graph-FL package (`ray`,
+`sphinx`/`sphinx_rtd_theme`/`twine` -- its own docs/publishing tooling,
+`tenseal`, `ogb`, `gdown`, ~50 packages total) and downgrades `pyyaml` to
+6.0.1 in a way that conflicts with `flwr`'s own `pyyaml<7.0.0,>=6.0.2`
+requirement -- confirmed directly this breaks pip's own dependency
+resolution once both are installed together. Since this project's own
+`config.yaml` parsing depends on `pyyaml` project-wide, leaving that
+conflict in place would be exactly the kind of unprompted side effect this
+project's setuptools-pin investigations were careful to avoid (see
+cv_frameworks/mmdetection_adapter.py's docstring) -- uninstalled fedgraph
+and its unique dependency tree, restored `pyyaml==6.0.3`, confirmed
+`python main.py --list` and the rest of this project's already-verified
+stack still work unchanged. What's left to actually implement this
+adapter is real engineering (FedGraph's own federated GNN training API,
+distinct from this project's PyTorch/CIFAR10 classification loop every
+other FL adapter shares), not an environment blocker -- left as a stub for
+that reason.
 """
 from core.registry import FL_FRAMEWORKS
 
 
 def build(**kwargs):
     raise NotImplementedError(
-        "FedGraph's transitive torch-scatter dependency fails to see the installed "
-        "torch during its isolated build -- see this module's docstring."
+        "FedGraph's install wall (Ray's missing wheel) is resolved on Ubuntu -- what's "
+        "left is writing a real adapter for its own federated-GNN API, not an "
+        "environment blocker -- see this module's docstring."
     )
 
 
