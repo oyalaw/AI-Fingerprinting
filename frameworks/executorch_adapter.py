@@ -30,24 +30,30 @@ Re-checked on Ubuntu with Python 3.13: that wheel wall is resolved --
 wheels exist for both Linux and Windows, so this looks like a
 Python-version fix that landed since the original check, not an
 OS-specific one). `import executorch` and `from executorch.exir import
-to_edge` both work. But actually running this adapter through `python
-main.py` (previously impossible) surfaced a new problem: the
-`torch.export`/`to_edge`/`.to_executorch()` pipeline either hangs or is
-prohibitively slow on this machine -- confirmed directly, a real run sat
-past 400 seconds with no further progress logged after the initial import
-warnings, never reaching this adapter's own log lines. Root cause not
-isolated (not confirmed whether this is genuinely stuck vs. just very
-slow CPU-only export/lowering for a ResNet18-sized graph) -- treat this
-the same as fl_frameworks/fedlab_adapter.py's original hang finding:
-real code against the documented API, still not confirmed to complete
-end-to-end, re-run and profile it yourself with a longer budget before
-relying on it.
+to_edge` both work.
+
+First attempt at running this through `python main.py` looked like a
+hang -- a server-only run sat past 400 seconds with no log line past the
+initial import warnings, and a paired client/server run with only a
+3-second gap between starting them got `ConnectionRefusedError`. That
+was a testing artifact, not a real hang: confirmed directly by polling
+the server process's own CPU usage over time (`ps -o pcpu,stat,etime`)
+-- it's genuinely computing (~38% CPU) for roughly the first 30-40
+seconds, then drops to idle, meaning `torch.export`/`to_edge`/
+`.to_executorch()` had already finished and the process was correctly
+blocked on `accept()` waiting for a client that was never given enough
+of a head start. Retried with the client started well after the server
+(15+ seconds in): the run completes cleanly, real predictions returned,
+and `ground_truth.json` correctly recorded `"level1_framework":
+"ExecuTorch"`. **Verified end-to-end.**
 
 The code below follows ExecuTorch's current documented export API as
-closely as this project's other adapters follow theirs; it has not been
-execution-verified the way the PyTorch/OpenVINO/ONNX Runtime/ONNX Runtime
-Mobile/PyTorch Mobile adapters were. Re-check this against ExecuTorch's
-docs, since this API has changed across ExecuTorch releases before.
+closely as this project's other adapters follow theirs, and is now
+execution-verified the same way PyTorch/OpenVINO/ONNX Runtime/ONNX
+Runtime Mobile/PyTorch Mobile are. `torch.export`/`to_edge`/
+`.to_executorch()` for a ResNet18-sized graph takes real wall-clock time
+on CPU (tens of seconds) -- give the server a real head start before
+starting the client, the same as frameworks/tvm_adapter.py's own note.
 
 torch/executorch are imported lazily so this module still registers
 cleanly -- and shows up correctly in `python main.py --list` -- on a
