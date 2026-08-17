@@ -25,6 +25,19 @@ If this project runs on Linux with an older, DGL-supported Python version,
 this is worth revisiting: DGL's GraphConv is a genuine second GCN
 implementation to pair with the existing GCN/Karate Club slice, the same
 role graph_frameworks/pytorch_geometric_adapter.py already fills.
+
+This project has now moved to exactly that: a real Linux (Ubuntu 24.04)
+machine. Re-checked directly, and this specific wall doesn't move --
+`pip install dgl -f https://data.dgl.ai/wheels/torch-2.4/repo.html` on
+Ubuntu still falls back to the identical stale `dgl-0.1.3` 2018 snapshot.
+Confirmed why: DGL's own wheel index for that torch build lists real
+current releases (up through 2.5.0) for `cp38` through `cp312` only --
+still no `cp313` wheel at all, on Linux or otherwise. So "Linux" alone
+wasn't the missing piece; being on Linux with a DGL-supported Python
+version is, and this project's Python (3.13) is newer than DGL's current
+wheel ceiling regardless of platform. Revisit once DGL publishes a cp313
+wheel, or if running this project on an older, DGL-supported Python
+becomes acceptable.
 """
 from core.registry import GRAPH_FRAMEWORKS
 
