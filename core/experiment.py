@@ -5,6 +5,8 @@ from core.labels import build_ground_truth, new_experiment_id
 from core.logger import get_logger
 from telemetry.experiment_log import ExperimentLog
 from telemetry.ground_truth import write_ground_truth
+from traffic.burst_features import export_bursts
+from traffic.flow_features import export_flow_features
 from traffic.packet_features import ScapyCapture
 from traffic.sequence_export import export_sequence
 
@@ -45,14 +47,22 @@ class Experiment:
 
         timing["end"] = time.time()
 
-        sequence_path = None
+        sequence_path = flow_features_path = bursts_path = None
         if capture and pcap_path.exists():
             sequence_path = self.results_dir / f"{self.experiment_id}_sequence.csv"
             export_sequence(pcap_path, sequence_path, server_port=self.config.port)
 
+            flow_features_path = self.results_dir / f"{self.experiment_id}_flow_features.json"
+            export_flow_features(pcap_path, flow_features_path, server_port=self.config.port)
+
+            bursts_path = self.results_dir / f"{self.experiment_id}_bursts.csv"
+            export_bursts(pcap_path, bursts_path)
+
         artifacts = {
             "pcap": str(pcap_path) if capture else None,
             "sequence_csv": str(sequence_path) if sequence_path else None,
+            "flow_features": str(flow_features_path) if flow_features_path else None,
+            "bursts_csv": str(bursts_path) if bursts_path else None,
             "events_log": str(self.results_dir / "events.jsonl"),
         }
         ground_truth = build_ground_truth(self.config, self.experiment_id, timing, artifacts)
