@@ -22,6 +22,19 @@ incompatible with a modern Python), but a different, harder, standard-
 library-level wall underneath it, not a hardware/OS gate. Revisit only if
 PaddleDetection relaxes its numpy pin to a release with a real
 Python-3.12+-compatible build system.
+
+Confirmed directly on Ubuntu too, since this project moved off its
+original Windows dev machine: `pip install --no-build-isolation paddledet`
+fails with the exact same `ModuleNotFoundError: No module named
+'distutils.msvccompiler'`, at the exact same import site
+(`numpy/distutils/mingw32ccompiler.py`). That file's own
+`from distutils.msvccompiler import get_build_version` isn't gated behind
+any `sys.platform == "win32"` check -- it's imported unconditionally by
+`numpy/distutils/command/config.py`, which is itself imported
+unconditionally by `numpy.distutils.core` -- so this genuinely reproduces
+identically on Linux. Confirms this was correctly diagnosed the first
+time as a Python-version ceiling, not an OS-specific one: switching
+platforms changes nothing here.
 """
 from core.registry import CV_FRAMEWORKS
 
