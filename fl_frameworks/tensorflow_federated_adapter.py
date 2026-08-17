@@ -16,6 +16,22 @@ that specific wall (alongside graph_frameworks/spektral_adapter.py's
 framework-mismatch finding, which is a different kind of TF-related
 block). Revisit all of these together once TensorFlow itself has a real
 install here.
+
+That second wall is now resolved (see frameworks/tensorflow_adapter.py's
+and fl_frameworks/fedscale_adapter.py's docstrings -- TensorFlow 2.21.0
+ships a real `cp313` wheel and installs cleanly on Ubuntu). Re-checked
+`pip install tensorflow-federated` directly with that in place: the
+*first* wall is still there, unchanged, and it's what actually blocks
+this now. Confirmed why it's not fixed by TensorFlow being available or
+by moving to Linux: `tensorflow-federated`'s own pin is
+`grpcio~=1.46.3` (from ~2022) -- checked directly via grpcio's own PyPI
+file index, that release has zero `cp312`/`cp313` wheels on *any*
+platform, so it always falls back to a source build, which hits the same
+`pkg_resources`-removed-from-modern-setuptools wall regardless of OS.
+Same Python-version-ceiling class of finding as fl_frameworks/
+pysyft_adapter.py's pyarrow pin and cv_frameworks/paddledetection_adapter.py's
+numpy pin -- not something switching platforms changes. Revisit once TFF
+relaxes its grpcio pin to a version with a current wheel.
 """
 from core.registry import FL_FRAMEWORKS
 
