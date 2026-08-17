@@ -1,13 +1,49 @@
 """NVFlare federated learning adapter -- written to the real API. Two
-separate, serious caveats, disclosed here rather than glossed over:
+separate, serious caveats, disclosed here rather than glossed over. Caveat
+1 was re-investigated on Ubuntu (this project's earlier findings were all
+from its Windows dev machine) and is now confirmed resolved -- which, for
+the first time, let this adapter's code actually run instead of just be
+read, and that surfaced two more real, confirmed bugs underneath it.
 
-1. `import nvflare` fails outright on this Windows machine. Confirmed
-   directly: nvflare/__init__.py unconditionally imports FedJob, which
-   transitively imports nvflare.fuel.f3.cellnet.net_agent, which does
-   `import resource` -- the POSIX resource-limits module, which doesn't
-   exist on Windows at all. This is a hard platform gate baked into
-   NVFlare's core import chain, not something fixable in this adapter;
-   NVFlare requires Linux/macOS.
+1. `import nvflare` used to fail outright on Windows. Confirmed directly:
+   nvflare/__init__.py unconditionally imports FedJob, which transitively
+   imports nvflare.fuel.f3.cellnet.net_agent, which does `import resource`
+   -- the POSIX resource-limits module, which doesn't exist on Windows at
+   all. On Ubuntu, confirmed directly: `import nvflare` (2.8.1) works
+   cleanly, `resource` is a normal stdlib module on Linux -- this platform
+   gate is fully resolved.
+
+   Actually running this adapter for the first time (previously impossible)
+   surfaced two further, genuine bugs, both against the real NVFlare 2.8.1
+   API rather than the version this adapter was originally written against:
+
+   - `FedJob.simulator_run()` raised `ValueError: You already specified
+     clients using to(). Don't use n_clients in simulator_run.` -- current
+     NVFlare rejects passing both explicit per-site `.to(...)` calls (which
+     this adapter always made) and `n_clients=` together. Fixed: dropped
+     the now-redundant `n_clients=config.num_clients` argument.
+
+   - With that fixed, job-config generation itself then failed:
+     `TypeError: Object of type type is not JSON serializable`. Traced
+     directly (via a debug JSONEncoder catching the exact offending value):
+     `job.to(model, "server")` -- the Client API's own convenience shortcut
+     for "auto-configure a persistor from a plain `nn.Module`" -- reflects
+     over the model's `__dict__` via NVFlare's own
+     `get_component_init_parameters()` to capture constructor-arg-shaped
+     attributes for the generated job config, and torchvision's
+     `resnet18()` stores `self._norm_layer = nn.BatchNorm2d` (confirmed
+     directly: a raw *class* object, the resolved default for its
+     `norm_layer=None` constructor parameter, not an instance) as a
+     same-named attribute. NVFlare's reflection picks it up and tries to
+     JSON-serialize a live Python class into the job config, which fails
+     unconditionally. This is a genuine bug/limitation in NVFlare's own
+     `job.to(model, ...)` reflection against an entirely standard,
+     unmodified torchvision model -- not something this project's adapter
+     code causes or can route around short of hand-building a
+     `PTFileModelPersistor` in place of the documented shortcut, which
+     would only matter if caveat 2 below weren't already the harder
+     ceiling. Left unfixed for that reason; this adapter still doesn't run
+     to completion.
 
 2. Separately, and more fundamentally: NVFlare's `FedJob.simulator_run()`
    -- the simplest, most direct API match for "run a federated round from
@@ -43,12 +79,14 @@ CIFAR10/normalize_chw implementation inline the way this script originally
 did. This assumes ScriptRunner(launch_external_process=False) executes the
 script in the same Python process/sys.path as this project (NVFlare's own
 simulator design for exactly this "skip subprocess overhead" case), so
-`from core.training_data import ...` resolves normally -- **not verified
-here**: `import nvflare` already fails outright on this Windows machine
-(caveat #1 above), so this script has never actually been executed by
-NVFlare in this environment. If that assumption turns out wrong wherever
-NVFlare does run, the fallback is reinlining the loading logic the way it
-originally was -- see this module's git history for that version.
+`from core.training_data import ...` resolves normally -- **still not
+verified**: caveat 1's job-config serialization bug now aborts
+`simulator_run()` before NVFlare ever reaches the point of actually
+launching any site's script, so this generated script has still never
+been executed by NVFlare for real, on either OS. If that assumption turns
+out wrong wherever this eventually does run, the fallback is reinlining
+the loading logic the way it originally was -- see this module's git
+history for that version.
 
 run_client() isn't meaningful for this adapter: in simulator mode there is
 no separate client process to launch -- simulator_run() drives every
@@ -173,7 +211,7 @@ class NVFlareAdapter(FLFrameworkAdapter):
                 f"NVFlare simulator starting: {config.num_clients} clients, "
                 f"{config.num_rounds} rounds (in-process, no real network traffic -- see module docstring)"
             )
-            job.simulator_run(str(Path(tmp_dir) / "workspace"), n_clients=config.num_clients)
+            job.simulator_run(str(Path(tmp_dir) / "workspace"))
 
         event_log.event("fl_server_complete", rounds=config.num_rounds)
 
