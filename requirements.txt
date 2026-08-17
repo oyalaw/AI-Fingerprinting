@@ -92,6 +92,13 @@ nvflare
 # pure PyTorch extension, no special hardware needed.
 fairscale
 
+# DeepSpeed distributed-training slice (ZeRO stage 1). Blocked on Windows
+# (op-builder produces zero compilable sources for a Windows/no-CUDA
+# target); on Linux, plain pip install works and it JIT-builds ops via
+# ninja on first use -- see distributed_frameworks/deepspeed_adapter.py's
+# docstring.
+deepspeed
+
 # Packet capture (requires Npcap on Windows / libpcap on Linux & macOS,
 # plus admin/root privileges to actually capture -- see README.md)
 scapy
