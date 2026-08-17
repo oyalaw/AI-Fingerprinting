@@ -19,16 +19,35 @@ export + host-side execution path:
      without a real device -- not a shortcut invented for this project.
 
 Environment note: unlike TensorRT (blocked by lacking an NVIDIA GPU), this
-one is blocked by dependency availability, not hardware -- `pip install
-executorch` currently has no wheel for Python 3.14 (confirmed: `Could not
-find a version that satisfies the requirement executorch (from versions:
-none)`), so this couldn't be run end-to-end in this project's own dev
-environment. The code below follows ExecuTorch's current documented
-export API as closely as this project's other adapters follow theirs; it
-has not been execution-verified the way the PyTorch/OpenVINO/ONNX
-Runtime/ONNX Runtime Mobile/PyTorch Mobile adapters were. Re-check this
-against ExecuTorch's docs when a compatible Python is available, since
-this API has changed across ExecuTorch releases before.
+one was blocked by dependency availability, not hardware -- `pip install
+executorch` had no wheel for Python 3.14 on this project's earlier
+Windows dev machine (confirmed: `Could not find a version that satisfies
+the requirement executorch (from versions: none)`).
+
+Re-checked on Ubuntu with Python 3.13: that wheel wall is resolved --
+`executorch` 1.4.1 ships a real `cp313` `manylinux_2_28_x86_64` wheel, and
+`pip install executorch` succeeds cleanly (also confirmed `cp313`/`cp314`
+wheels exist for both Linux and Windows, so this looks like a
+Python-version fix that landed since the original check, not an
+OS-specific one). `import executorch` and `from executorch.exir import
+to_edge` both work. But actually running this adapter through `python
+main.py` (previously impossible) surfaced a new problem: the
+`torch.export`/`to_edge`/`.to_executorch()` pipeline either hangs or is
+prohibitively slow on this machine -- confirmed directly, a real run sat
+past 400 seconds with no further progress logged after the initial import
+warnings, never reaching this adapter's own log lines. Root cause not
+isolated (not confirmed whether this is genuinely stuck vs. just very
+slow CPU-only export/lowering for a ResNet18-sized graph) -- treat this
+the same as fl_frameworks/fedlab_adapter.py's original hang finding:
+real code against the documented API, still not confirmed to complete
+end-to-end, re-run and profile it yourself with a longer budget before
+relying on it.
+
+The code below follows ExecuTorch's current documented export API as
+closely as this project's other adapters follow theirs; it has not been
+execution-verified the way the PyTorch/OpenVINO/ONNX Runtime/ONNX Runtime
+Mobile/PyTorch Mobile adapters were. Re-check this against ExecuTorch's
+docs, since this API has changed across ExecuTorch releases before.
 
 torch/executorch are imported lazily so this module still registers
 cleanly -- and shows up correctly in `python main.py --list` -- on a
