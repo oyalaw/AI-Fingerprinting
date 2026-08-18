@@ -16,9 +16,40 @@ try:
 except ImportError:
     SCAPY_AVAILABLE = False
 
+import socket
+
 
 class CaptureUnavailableError(RuntimeError):
     pass
+
+
+def _check_raw_socket_permission():
+    # scapy's own AsyncSniffer.start() only spawns a background thread and
+    # returns immediately -- the actual raw-socket open happens inside that
+    # thread (scapy's sendrecv.py _run()), so a real PermissionError there
+    # never reaches this project's own try/except PermissionError in
+    # start() below. Confirmed directly: running without root/CAP_NET_RAW
+    # crashed that thread with a raw, unhandled "Exception in thread
+    # AsyncSniffer" traceback instead of this project's own clear
+    # CaptureUnavailableError -- and worse, the experiment silently
+    # continued and "succeeded" with 0 packets captured, which defeats the
+    # whole point of a traffic-fingerprinting testbed. Doing the identical
+    # socket-open synchronously here, before scapy ever starts its thread,
+    # surfaces the same real permission failure where it can actually be
+    # caught. Only meaningful on Linux, where scapy's default backend opens
+    # a raw AF_PACKET socket (confirmed: conf.use_pcap=False on this
+    # project's dev machine) -- Windows/Npcap and macOS's BPF device use a
+    # different permission model this check doesn't cover.
+    if not hasattr(socket, "AF_PACKET"):
+        return
+    try:
+        raw = socket.socket(socket.AF_PACKET, socket.SOCK_RAW)
+        raw.close()
+    except PermissionError as exc:
+        raise CaptureUnavailableError(
+            "Packet capture needs elevated privileges: run as Administrator "
+            "(Windows/Npcap) or with sudo / CAP_NET_RAW (Linux/macOS)."
+        ) from exc
 
 
 class ScapyCapture:
@@ -41,6 +72,7 @@ class ScapyCapture:
                 "scapy is not installed. Run `pip install scapy` and, on Windows, "
                 "install Npcap (https://npcap.com/) first."
             )
+        _check_raw_socket_permission()
         bpf_filter = f"tcp port {self.port}"
         self._log(f"Starting capture: filter='{bpf_filter}' interface={self.interface or 'default'}")
         try:
