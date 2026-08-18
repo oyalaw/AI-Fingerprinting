@@ -471,7 +471,16 @@ Each run writes to `experiments/results/<experiment_id>/`:
 `ground_truth.json` (the 5-level label + full config snapshot),
 `<id>.pcap` (raw capture), `<id>_sequence.csv` (ordered
 timestamp/direction/size sequence -- the standard feature representation
-for traffic-fingerprinting classifiers), and `events.jsonl` / `experiment.log`.
+for traffic-fingerprinting classifiers), `<id>_flow_features.json`
+(`traffic/flow_features.py`'s per-capture byte/packet counts and duration,
+split by direction), `<id>_bursts.csv` (`traffic/burst_features.py`'s
+packet-burst segmentation, grouping packets separated by >0.5s
+inter-arrival gaps -- `start`/`end`/`packet_count`/`byte_count`/
+`duration_s` per burst), and `events.jsonl` / `experiment.log`. The last
+four (`sequence_csv`/`flow_features`/`bursts_csv`/`pcap`) are only
+written when `capture: true` and the capture actually produced packets;
+`ground_truth.json`'s `artifacts` block records `null` for each
+otherwise.
 
 ## Extending
 
