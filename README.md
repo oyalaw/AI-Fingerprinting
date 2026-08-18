@@ -97,7 +97,9 @@ another retry or pip flag fixes from here:
   Stable Diffusion WebUI, Text Generation Inference, LEAF, StellarGraph,
   Megatron-LM, PaddleFL)
 - **Hardware this machine doesn't have** (TensorRT LLM, ExLlamaV2's
-  CUDA-only kernels, vLLM's plain PyPI wheel defaulting to a CUDA target)
+  CUDA-only kernels, vLLM's plain PyPI wheel defaulting to a CUDA target,
+  SGLang's dependency resolution defaulting to the same once its own
+  separate apache-tvm-ffi version wall got out of the way)
 - **A different ML framework family this project isn't built for**
   (Spektral/PaddleFL/PaddleDetection on TensorFlow/PaddlePaddle,
   FedJAX/Alpa on JAX -- this project's shared architecture contract is
