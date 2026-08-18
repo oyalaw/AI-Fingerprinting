@@ -49,10 +49,54 @@ this adapter's own code:
    with this project's own `setuptools==80.9.0` pin (needed elsewhere for
    `pkg_resources` availability, see cv_frameworks/mmdetection_adapter.py's
    docstring), so upgrading isn't a clean fix without risking a regression
-   to every other adapter that pin protects. Not pursued further --
-   confirmed no side effects (setuptools pin unchanged, no partial state
-   left behind). Revisit once a released `onnx2tf` fixes this without
-   raising its own `setuptools` floor past 80.9.0.
+   to every other adapter that pin protects.
+
+   **Found a narrower fix, without touching the setuptools pin**: the
+   buggy `download_test_image_data()` path only triggers when `onnx2tf`
+   sees an input it recognizes as image-shaped -- specifically
+   `input.shape[0] is not None and input.shape[0] <= 20` (a concrete,
+   small batch dimension) *and* `input.shape[-1] == 3` (channels-last,
+   after `onnx2tf`'s own internal NCHW->NHWC transpose). Confirmed
+   directly: exporting the ONNX graph with a *dynamic* batch axis
+   (`torch.onnx.export(..., dynamic_axes={"input": {0: "batch"}, "output":
+   {0: "batch"}})`) makes `input.shape[0]` `None` in the traced graph,
+   which fails that check's `is not None` condition outright -- the whole
+   calibration-image code path (and its pickle bug) is never reached, and
+   `onnx2tf.convert(...)` completes successfully. Confirmed with a real
+   standalone script (ResNet18, not just a toy module).
+
+   That's real, forward progress -- but going further to check the
+   *converted model's actual correctness* surfaced two more real bugs,
+   confirmed directly rather than assumed fixed by the workaround above:
+
+   - This adapter's own `predict()` (below) passes `input_tensor`'s array
+     straight through unchanged -- still NCHW, this project's convention
+     everywhere else. But `onnx2tf` converts to TensorFlow's native NHWC
+     layout by default (confirmed directly: the loaded SavedModel's own
+     `structured_input_signature` reports `(None, 32, 32, 3)`, not
+     `(None, 3, 32, 32)`), so feeding it an unmodified NCHW array fails
+     with `input depth must be evenly divisible by filter depth: 32 vs 3`
+     -- a real, separate bug in this adapter's own `predict()`, just
+     never reached before now because the pickle bug always crashed
+     first. A plain `np.transpose(array, (0, 2, 3, 1))` before the
+     `tf.constant(...)` call is the fix, not yet applied here.
+   - Even past that (confirmed by transposing manually in the standalone
+     script), a *third* wall: `tensorflow.python.framework.errors_impl.
+     InvalidArgumentError: ... Input to reshape is a tensor with 512
+     values, but the requested shape has 524288` -- a real shape mismatch
+     inside `onnx2tf`'s own converted graph, specifically triggered by
+     the dynamic batch axis (a fully static, fixed-batch export doesn't
+     hit this, but re-triggers the original pickle bug instead -- the two
+     fixes are currently in tension, not simultaneously satisfiable with
+     the export flags tried so far). Root cause not isolated further;
+     revisit with more time, or once a released `onnx2tf` fixes the
+     original pickle bug directly (see above) and neither workaround is
+     needed.
+
+   Not applied to the actual adapter code below given this stack of three
+   real walls only two of which have confirmed fixes -- a genuinely
+   working end-to-end fix needs the third resolved too, tracked here
+   precisely rather than landing a partial change that still doesn't run.
 
 Still treat this the same as frameworks/executorch_adapter.py and
 frameworks/tvm_adapter.py: written to the documented API, not verified
