@@ -16,11 +16,21 @@ try:
 except ImportError:
     SCAPY_AVAILABLE = False
 
+import ipaddress
 import socket
 
 
 class CaptureUnavailableError(RuntimeError):
     pass
+
+
+def _is_loopback_host(host):
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 def _check_raw_socket_permission():
@@ -73,6 +83,25 @@ class ScapyCapture:
                 "install Npcap (https://npcap.com/) first."
             )
         _check_raw_socket_permission()
+        if self.interface is None and _is_loopback_host(self.host):
+            # Real, confirmed bug, not a hypothetical: scapy's own default
+            # interface selection (conf.iface) picks the machine's primary
+            # NIC (e.g. a WiFi/ethernet adapter), never "lo" -- confirmed
+            # directly on this project's dev machine (conf.iface reported
+            # the WiFi adapter, with get_if_list() separately listing "lo").
+            # Client/server traffic to a loopback host (127.0.0.1/::1/
+            # localhost -- the exact setup main.py --interactive's own
+            # guided setup and this project's own testing throughout use)
+            # never touches that NIC at all -- it stays entirely inside the
+            # kernel's loopback interface. Sniffing on the wrong interface
+            # doesn't error, it just silently captures 0 packets forever,
+            # defeating the whole point of a traffic-fingerprinting
+            # testbed. core/config.py's capture_interface exists to let
+            # someone override this, but main.py --interactive never
+            # prompts for it, so it's always None in the common case this
+            # fixes automatically here.
+            self.interface = "lo"
+            self._log("Host is loopback -- auto-selecting capture interface 'lo'")
         bpf_filter = f"tcp port {self.port}"
         self._log(f"Starting capture: filter='{bpf_filter}' interface={self.interface or 'default'}")
         try:
