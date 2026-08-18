@@ -100,6 +100,18 @@ nvflare
 # installed).
 fedgraph
 
+# FedScale: real Aggregator/Executor over real gRPC, real CIFAR10 (its own
+# downloader, not this project's own datasets/cifar10.py) -- see
+# fl_frameworks/fedscale_adapter.py's docstring. Needs wandb/tensorboard
+# (optional-looking in its own default args, but its aggregation module
+# imports them eagerly) and `overrides` (an undeclared transitive
+# dependency of fedscale.cloud.execution.tensorflow_client) installed
+# explicitly, since fedscale's own PyPI metadata under-declares both.
+fedscale
+wandb
+tensorboard
+overrides
+
 # FairScale distributed-training slice (OSS + ShardedDataParallel) --
 # pure PyTorch extension, no special hardware needed.
 fairscale
