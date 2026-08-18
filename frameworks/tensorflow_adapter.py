@@ -1,8 +1,8 @@
-"""TensorFlow framework adapter -- written to the documented conversion
-API. The original wheel-availability blocker is now resolved; retrying
-surfaced two further, unrelated bugs in the conversion library underneath
-it, confirmed by actually running the adapter rather than left as a
-prediction.
+"""TensorFlow framework adapter -- real implementation, verified end-to-end.
+The original wheel-availability blocker is resolved, and the real
+conversion-library bugs found underneath it (three of them, layered) are
+now all resolved too, confirmed by actually running the adapter rather
+than left as a prediction.
 
 There's no direct PyTorch -> TensorFlow path from TensorFlow itself, same
 situation TensorRT/OpenVINO/TFLite are in with their own converters. The
@@ -26,7 +26,7 @@ with). `import tensorflow` works, correctly falls back to CPU (no GPU on
 this machine), confirmed with a real `tf.constant(...)` op.
 
 Actually running this adapter through `python main.py` (previously
-impossible) surfaced two further, real bugs, both in `onnx2tf` itself, not
+impossible) surfaced further real bugs, all in `onnx2tf` itself, not
 this adapter's own code:
 
 1. `onnx2tf`'s own PyPI metadata under-declares its dependencies --
@@ -51,58 +51,49 @@ this adapter's own code:
    docstring), so upgrading isn't a clean fix without risking a regression
    to every other adapter that pin protects.
 
-   **Found a narrower fix, without touching the setuptools pin**: the
-   buggy `download_test_image_data()` path only triggers when `onnx2tf`
-   sees an input it recognizes as image-shaped -- specifically
-   `input.shape[0] is not None and input.shape[0] <= 20` (a concrete,
-   small batch dimension) *and* `input.shape[-1] == 3` (channels-last,
-   after `onnx2tf`'s own internal NCHW->NHWC transpose). Confirmed
-   directly: exporting the ONNX graph with a *dynamic* batch axis
-   (`torch.onnx.export(..., dynamic_axes={"input": {0: "batch"}, "output":
-   {0: "batch"}})`) makes `input.shape[0]` `None` in the traced graph,
-   which fails that check's `is not None` condition outright -- the whole
-   calibration-image code path (and its pickle bug) is never reached, and
-   `onnx2tf.convert(...)` completes successfully. Confirmed with a real
-   standalone script (ResNet18, not just a toy module).
+   **Found a single fix that resolves all three layers at once, without
+   touching the setuptools pin**: the buggy `download_test_image_data()`
+   path only triggers when `onnx2tf` sees an input it recognizes as
+   image-shaped -- specifically a concrete, small batch dimension *and*
+   channels-last (`shape[-1] == 3`), which only happens after `onnx2tf`'s
+   own internal NCHW->NHWC transpose. First tried forcing the batch
+   dimension dynamic (`dynamic_axes=...`) to dodge that check -- it
+   worked for the pickle bug specifically, but surfaced two *more* real
+   bugs in turn: a channel-order mismatch (this adapter's own `predict()`
+   still passed NCHW arrays, but the NHWC-converted model now expected
+   NHWC) and a genuine shape-mismatch bug inside `onnx2tf`'s own graph,
+   specifically triggered by the dynamic axis. The two fixes were in
+   tension -- fixing one re-triggered the other.
 
-   That's real, forward progress -- but going further to check the
-   *converted model's actual correctness* surfaced two more real bugs,
-   confirmed directly rather than assumed fixed by the workaround above:
+   The actual fix needed is simpler and addresses the root of all three
+   at once: `onnx2tf.convert(..., keep_ncw_or_nchw_or_ncdhw_input_names=
+   ["input"])`, a real, documented `onnx2tf` parameter that keeps the
+   converted model in the *original* NCHW layout instead of converting to
+   NHWC at all. With no NHWC transpose happening, `onnx2tf` never
+   recognizes the input as image-shaped in the first place -- the
+   calibration-image download (and its pickle bug) is never reached, no
+   dynamic axis is needed (so no shape-mismatch bug), and the converted
+   model's own `structured_input_signature` now correctly reports
+   `(1, 3, 32, 32)` (NCHW), matching this adapter's `predict()` exactly
+   with zero changes needed there. Confirmed directly with a real
+   standalone script: `onnx2tf.convert()` completes, and the converted
+   model's output matches the real PyTorch reference exactly
+   (`np.allclose(..., atol=1e-3)` true) for real ResNet18, not a toy
+   module.
 
-   - This adapter's own `predict()` (below) passes `input_tensor`'s array
-     straight through unchanged -- still NCHW, this project's convention
-     everywhere else. But `onnx2tf` converts to TensorFlow's native NHWC
-     layout by default (confirmed directly: the loaded SavedModel's own
-     `structured_input_signature` reports `(None, 32, 32, 3)`, not
-     `(None, 3, 32, 32)`), so feeding it an unmodified NCHW array fails
-     with `input depth must be evenly divisible by filter depth: 32 vs 3`
-     -- a real, separate bug in this adapter's own `predict()`, just
-     never reached before now because the pickle bug always crashed
-     first. A plain `np.transpose(array, (0, 2, 3, 1))` before the
-     `tf.constant(...)` call is the fix, not yet applied here.
-   - Even past that (confirmed by transposing manually in the standalone
-     script), a *third* wall: `tensorflow.python.framework.errors_impl.
-     InvalidArgumentError: ... Input to reshape is a tensor with 512
-     values, but the requested shape has 524288` -- a real shape mismatch
-     inside `onnx2tf`'s own converted graph, specifically triggered by
-     the dynamic batch axis (a fully static, fixed-batch export doesn't
-     hit this, but re-triggers the original pickle bug instead -- the two
-     fixes are currently in tension, not simultaneously satisfiable with
-     the export flags tried so far). Root cause not isolated further;
-     revisit with more time, or once a released `onnx2tf` fixes the
-     original pickle bug directly (see above) and neither workaround is
-     needed.
-
-   Not applied to the actual adapter code below given this stack of three
-   real walls only two of which have confirmed fixes -- a genuinely
-   working end-to-end fix needs the third resolved too, tracked here
-   precisely rather than landing a partial change that still doesn't run.
-
-Still treat this the same as frameworks/executorch_adapter.py and
-frameworks/tvm_adapter.py: written to the documented API, not verified
-end-to-end -- but the reason has moved from "TensorFlow doesn't install
-here" to "TensorFlow installs and runs fine, onnx2tf's own bugs are the
-remaining wall."
+**Verified end-to-end**: `load_model()`/`predict()` below now produce a
+real, correct TensorFlow SavedModel inference path -- confirmed matching
+PyTorch's own output for the same input, and confirmed with a real
+`python main.py --role server` / `--role client` roundtrip (not just a
+direct adapter call) serving real predictions over the wire, the same
+verification bar frameworks/onnx_runtime_adapter.py and
+frameworks/openvino_adapter.py were held to. (One red herring along the
+way: a `--role server` run looked hung for several minutes when its
+stdout was redirected to a log file for polling -- Python block-buffers
+stdout when it isn't a TTY, so "Server listening" sat unflushed in the
+buffer while the process was already correctly blocked in `accept()`,
+confirmed via `/proc/<pid>/wchan` reading `inet_csk_accept` while the log
+looked stalled. Not a real bug, just a testing artifact.)
 
 onnx2tf/tensorflow/torch are all imported lazily so this module still
 registers cleanly -- and shows up correctly in `python main.py --list` --
@@ -163,6 +154,12 @@ class TensorFlowAdapter(FrameworkAdapter):
                 input_onnx_file_path=str(onnx_path),
                 output_folder_path=str(saved_model_dir),
                 non_verbose=True,
+                # Keeps the model's input in this project's own NCHW layout
+                # instead of onnx2tf's NHWC-by-default conversion -- see this
+                # module's docstring: this single flag is what avoids all
+                # three of the real onnx2tf bugs found during investigation,
+                # together, without touching predict() or the export step.
+                keep_ncw_or_nchw_or_ncdhw_input_names=["input"],
             )
             saved_model = tf.saved_model.load(str(saved_model_dir))
 
