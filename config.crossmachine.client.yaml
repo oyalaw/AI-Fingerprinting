@@ -1,0 +1,33 @@
+# Cross-machine test: run this on the server machine (host = ITS OWN real
+# LAN IP, not 127.0.0.1). Client machines connect to that IP.
+paradigm: inference
+role: client
+device: ubuntu
+
+framework: PyTorch
+family: CNN
+architecture: ResNet18
+application: Image Classification
+dataset: CIFAR10
+transport: TCP
+
+host: 10.250.37.118          # this machine's real LAN IP -- update if it changes (DHCP)
+port: 8765
+num_requests: 20
+batch_size: 1
+
+capture: true
+capture_interface: null      # real network traffic now -- scapy's default interface is
+                              # correct here, the loopback special-case doesn't apply
+
+tls_cert: null
+tls_key: null
+
+results_dir: experiments/results
+
+fl_framework: null
+distributed_framework: null
+num_clients: 2
+num_rounds: 3
+client_index: 0
+worker_rank: 1
