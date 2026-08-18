@@ -47,10 +47,10 @@ implemented end-to-end:
 - **Inference**: PyTorch -> Transformer -> SAM -> Segmentation -> Synthetic, a second architecture sharing the Segmentation application with YOLOv8-Seg despite a completely different output format. Built via `segment_anything.sam_model_registry["vit_b"](checkpoint=None)` -- confirmed directly this is a real, supported call, giving a random-init 93.7M-param model, no checkpoint download needed. SAM is normally driven through click/box prompts (`SamPredictor`); `_SAMWrapper` instead chains its three real internal stages directly (`image_encoder` -> `prompt_encoder` with a fixed center point standing in for a real click -> `mask_decoder`), confirmed each stage's shapes before writing the file. Since `Application` instances are built with no architecture context, `Segmentation.postprocess()` dispatches between SAM's and YOLOv8-Seg's totally different formats by total element count (65,537 vs 1,793,600 -- unambiguous), imported directly from each architecture module. The shared `preprocess()` stays fixed at YOLOv8-Seg's 640x640; `_SAMWrapper` upscales to its own required 1024x1024 internally via bilinear interpolation, rather than threading architecture-specific sizes through the application layer. Verified end-to-end including a real client/server roundtrip (slow -- ~13s/request on CPU for this size of ViT, expected and fine) and a regression check that YOLOv8-Seg still dispatches correctly afterward.
 - **Dataset**: COCO -- the real 2017 val split, paired with YOLOv8/Object Detection. `datasets/coco.py` avoids the two impractically large official bulk downloads: rather than the full `annotations_trainval2017.zip` (252MB, bundles train+val instances/captions/keypoints), only `instances_val2017.json` is pulled out of that zip; rather than the ~1GB `val2017.zip` of all 5000 images, `samples()` lazily fetches only the individual JPEGs it actually needs via each image's own `coco_url` field. `true_label` is the most common category name among an image's ground-truth annotations. Verified end-to-end including a real client/server roundtrip -- and unlike this project's other (random-init) architectures, YOLOv8 uses real pretrained weights, so this one's detections are genuinely meaningful: the true label showed up correctly among the actual detected objects in both test images (`bowl` in a kitchen scene also detecting person/oven/spoon; `orange` in another kitchen scene also detecting refrigerator/oven/dining table).
 - **Dataset**: ImageNet -- the real ILSVRC2012 validation split, the last dataset stub. No login wall encountered: confirmed directly with a Range request that the official 6.3GB `ILSVRC2012_img_val.tar` serves real tar bytes with no auth. Rather than download that, `datasets/imagenet.py` opens it as an HTTP stream and reads it via `tarfile`'s streaming mode, stopping once it has enough images -- confirmed directly this only pulls the bytes of the images actually kept, not the whole archive. Ground truth comes from the small (2.5MB, downloaded in full) official devkit: `meta.mat` (parsed via `scipy.io.loadmat`) gives the 1000 class ID -> human-readable-name mapping, `ILSVRC2012_validation_ground_truth.txt` gives the per-image class ID. Real finding from testing, not assumed: the tar's *physical* entry order is class-grouped (50 images/class), decoupled from each filename's validation index -- a literal first-N read returned the exact same label 15/15 times, confirmed against the raw ground-truth file (not a bug in the lookup). Fixed by keeping only every 97th qualifying entry while streaming, confirmed directly to produce 15/15 *unique* labels instead. Verified end-to-end including a real client/server roundtrip with three different real images/labels.
+- **Inference, now verified end-to-end**: TensorFlow -> CNN -> ResNet18, same combo -- ONNX export (same step TensorRT/ONNX Runtime use) then `onnx2tf.convert(...)` to a SavedModel, run via `tf.saved_model.load(...)`'s serving signature. Originally blocked by wheel availability on this project's Windows dev machine (Python 3.14); re-checked on Ubuntu with Python 3.13, `tensorflow` 2.21.0 ships a real `cp313` wheel and installs cleanly. That surfaced three further, layered real bugs in `onnx2tf` itself (under-declared dependencies, a numpy-2.x pickle-loading bug on its calibration-image path, and an NHWC-vs-NCHW layout mismatch two of the fix attempts fought each other over) -- resolved all three at once with `onnx2tf.convert(..., keep_ncw_or_nchw_or_ncdhw_input_names=["input"])`, which keeps the converted model in this project's own NCHW layout instead of onnx2tf's NHWC-by-default conversion. Verified against a real PyTorch reference (`np.allclose` match) and a real `python main.py --role server`/`--role client` roundtrip serving real predictions -- see frameworks/tensorflow_adapter.py's docstring, including a note on a stdout-buffering red herring that briefly looked like a hang during testing.
 
 Written to each framework's documented API but **not execution-verified** in this environment (every one of these was checked against real pip/wheel availability first, and landed here specifically because that check failed):
 
-- **TensorFlow** -> CNN -> ResNet18, same combo -- ONNX export (same step TensorRT/ONNX Runtime use) then `onnx2tf.convert(...)` to a SavedModel, run via `tf.saved_model.load(...)`'s serving signature. `tensorflow` has no wheel for this project's Python version at all (confirmed).
 - **TensorFlow Lite Micro** -> CNN -> ResNet18, same combo -- the same `.tflite` litert-torch conversion TensorFlow Lite uses, then simulated host-side via TFLite Micro's own `runtime.Interpreter` Python binding. No PyPI package exists at all for this one (confirmed) -- it's a from-source Bazel build against the tflite-micro GitHub repo, a stronger gap than ExecuTorch/TVM's "wheel not published yet."
 - **MediaPipe** -> CNN -> ResNet18, same combo -- the same `.tflite` conversion, with TFLite Metadata (labels + tensor descriptions) attached via MediaPipe's own `MetadataWriter`, then run through `ImageClassifier.create_from_options(...)`. `mediapipe` itself installs and imports cleanly here (confirmed) -- it's the underlying litert-torch/tensorflow model-prep step that's blocked, same gap as TensorFlow Lite.
 - **NCNN** -> CNN -> ResNet18, same combo -- `pnnx.export(...)` traces the module straight to NCNN's `.ncnn.param`/`.ncnn.bin` format, then runs via `ncnn.Net()` + `ncnn.Extractor`. Deliberately not run here: `pnnx.export` shells out to a compiled binary bundled in its PyPI wheel, the same shape of risk this project already had to correct once for a different framework's bundled tool -- written to the documented API, left unexecuted by explicit decision rather than dependency failure.
@@ -80,9 +80,9 @@ Every stub in every registry -- not just the ones with an interesting story
 above -- has now been individually investigated and, for the ones that
 stayed stubs, has a docstring documenting a specific, confirmed root cause
 rather than a placeholder. `family` (6/6), `architecture` (18/18),
-`application` (11/11), `dataset` (9/9), `device` (11/11), and `transport`
-(4/4) are fully real. The remaining registries (`framework` 22/23,
-`fl_framework` 5/16, `distributed_framework` 4/10, `llm_framework` 3/10,
+`application` (11/11), `dataset` (9/9), `device` (11/11), `transport`
+(4/4), and `framework` (23/23) are fully real. The remaining registries
+(`fl_framework` 5/16, `distributed_framework` 4/10, `llm_framework` 3/10,
 `cv_framework` 3/8, `speech_framework` 3/6, `graph_framework` 1/4,
 `diffusion_framework` 1/4) still have stubs, but every one of them was
 directly retried -- including a second pass after installing a C/C++
@@ -150,10 +150,15 @@ docstring for the full story, this is just the roundup:
   Linux, verified with both 1- and 2-client runs --
   fl_frameworks/fedlab_adapter.py), `fl_framework: FedGraph` (graph
   classification via real MUTAG data and real Ray-actor trainers, three
-  new registry entries added -- fl_frameworks/fedgraph_adapter.py), and
+  new registry entries added -- fl_frameworks/fedgraph_adapter.py),
   `fl_framework: FedScale` (real `Aggregator`/`Executor` over real gRPC,
-  real CIFAR10 -- fl_frameworks/fedscale_adapter.py). The scoping pass
-  below originally concluded the last two needed a new sub-project each;
+  real CIFAR10 -- fl_frameworks/fedscale_adapter.py), and `framework:
+  TensorFlow` (wheel wall resolved, then three layered real `onnx2tf`
+  bugs found and fixed underneath it, verified via a real `main.py`
+  client/server roundtrip -- frameworks/tensorflow_adapter.py). The
+  scoping pass
+  below originally concluded FedGraph/FedScale needed a new sub-project
+  each;
   both turned out tractable once actually driven by their real APIs
   instead of stopping at reading the config surface -- see each
   adapter's own docstring for the two real bugs found and fixed in each.
@@ -167,9 +172,6 @@ docstring for the full story, this is just the roundup:
 - **Confirmed to reproduce identically regardless of OS** (Python-version
   ceilings, not platform gates): PaddleDetection, PySyft, DGL, OpenFL,
   FedML, TensorFlow Federated.
-- **Wheel-availability wall resolved, revealing the real remaining work is
-  writing a new adapter or platform integration, not an environment fix**:
-  TensorFlow (installs and runs; `onnx2tf`'s own bugs are the new wall).
 - **Installs now, but still a structural dead end**: Alpa (its own pins
   now resolve, revealing a genuine `jax`/`jaxlib` version mismatch bug,
   moot either way given its JAX-native architecture mismatch).
