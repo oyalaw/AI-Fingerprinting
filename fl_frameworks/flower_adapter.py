@@ -53,7 +53,12 @@ def _partition_loader(config, client_index):
     indices = list(range(client_index, len(full_dataset), num_clients))[: config.num_requests]
     subset = Subset(full_dataset, indices)
 
-    return DataLoader(subset, batch_size=max(config.batch_size, 1))
+    # BatchNorm2d (ResNet18/50, MobileNetV2) can't compute batch statistics
+    # from a single sample in model.train() mode -- confirmed directly, a
+    # real `ValueError: Expected more than 1 value per channel` crash with
+    # this project's default config.batch_size=1. Floor at 2 and drop any
+    # leftover partial batch of 1, rather than let the last batch crash.
+    return DataLoader(subset, batch_size=max(config.batch_size, 2), drop_last=True)
 
 
 class FlowerAdapter(FLFrameworkAdapter):

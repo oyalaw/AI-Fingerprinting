@@ -137,7 +137,11 @@ _CLIENT_SCRIPT = textwrap.dedent(
         full_dataset = build_classification_dataset(data_config, num_clients * NUM_REQUESTS)
         indices = list(range(client_index, len(full_dataset), num_clients))[:NUM_REQUESTS]
         subset = Subset(full_dataset, indices)
-        loader = DataLoader(subset, batch_size=BATCH_SIZE)
+        # Same real BatchNorm2d/batch-size-1 crash documented in
+        # fl_frameworks/flower_adapter.py's _partition_loader -- BATCH_SIZE
+        # is substituted already floored at 2 (see run_server below);
+        # drop_last=True here handles any leftover partial batch of 1.
+        loader = DataLoader(subset, batch_size=BATCH_SIZE, drop_last=True)
 
         while flare.is_running():
             input_model = flare.receive()
@@ -191,7 +195,7 @@ class NVFlareAdapter(FLFrameworkAdapter):
 
         script_source = (
             _CLIENT_SCRIPT.replace("NUM_REQUESTS", str(config.num_requests))
-            .replace("BATCH_SIZE", str(max(config.batch_size, 1)))
+            .replace("BATCH_SIZE", str(max(config.batch_size, 2)))
             .replace("DATASET_NAME", config.dataset)
             .replace("APPLICATION_NAME", config.application)
             .replace("ARCHITECTURE_NAME", config.architecture)

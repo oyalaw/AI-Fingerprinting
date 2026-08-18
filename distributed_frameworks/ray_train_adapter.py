@@ -89,7 +89,10 @@ def _train_loop_per_worker(config, event_log):
 
     dataset = build_classification_dataset(config, world_size * config.num_requests)
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank)
-    loader = DataLoader(dataset, batch_size=max(config.batch_size, 1), sampler=sampler)
+    # Same real BatchNorm2d/batch-size-1 crash documented in
+    # fl_frameworks/flower_adapter.py's _partition_loader -- floor at 2,
+    # drop any leftover partial batch of 1.
+    loader = DataLoader(dataset, batch_size=max(config.batch_size, 2), sampler=sampler, drop_last=True)
 
     optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
     loss_fn = torch.nn.CrossEntropyLoss()

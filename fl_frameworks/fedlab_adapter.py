@@ -99,7 +99,10 @@ class _ClientPartitionedDataset:
         ]
         subset = Subset(full_dataset, indices)
 
-        return DataLoader(subset, batch_size=max(batch_size, 1))
+        # Same real BatchNorm2d/batch-size-1 crash documented in
+        # fl_frameworks/flower_adapter.py's _partition_loader -- floor at 2,
+        # drop any leftover partial batch of 1.
+        return DataLoader(subset, batch_size=max(batch_size, 2), drop_last=True)
 
 
 class FedLabAdapter(FLFrameworkAdapter):

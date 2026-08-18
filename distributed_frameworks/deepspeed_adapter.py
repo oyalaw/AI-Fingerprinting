@@ -75,7 +75,10 @@ def _build_loader(config, world_size):
     dataset = build_classification_dataset(config, world_size * config.num_requests)
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=dist.get_rank())
 
-    return DataLoader(dataset, batch_size=max(config.batch_size, 1), sampler=sampler)
+    # Same real BatchNorm2d/batch-size-1 crash documented in
+    # fl_frameworks/flower_adapter.py's _partition_loader -- floor at 2,
+    # drop any leftover partial batch of 1.
+    return DataLoader(dataset, batch_size=max(config.batch_size, 2), sampler=sampler, drop_last=True)
 
 
 def _train(config, logger, event_log, rank):
