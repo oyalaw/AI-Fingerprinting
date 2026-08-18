@@ -74,6 +74,19 @@ FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES = (
 )
 FL_DISTRIBUTED_FRAMEWORK = "PyTorch"
 
+# fl_frameworks/fedgraph_adapter.py is a deliberate, narrow exception to the
+# constraint above: unlike every other FL/distributed adapter, it doesn't
+# call build_classification_dataset()/.state_dict() on a model this project's
+# own registries build -- it drives FedGraph's own real run_GC() pipeline
+# end-to-end (FedGraph's own data_loader_GC_single() partitioning real MUTAG
+# graphs across FedGraph's own Ray-actor trainers, FedGraph's own GIN model
+# construction), confirmed directly to work this way, not routed through
+# FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES's classification loader at all.
+# architecture=GIN's own build() still returns a real, independently-usable
+# PyTorch module for paradigm=inference (see architectures/gin.py) -- this
+# tuple only controls what's additionally allowed for fl_framework=FedGraph.
+FEDGRAPH_COMPATIBLE_ARCHITECTURES = ("GIN",)
+
 
 @dataclasses.dataclass
 class ExperimentConfig:
@@ -167,12 +180,31 @@ class ExperimentConfig:
                     f"adapter calls .state_dict()/.parameters()/.train() directly on the loaded model, "
                     f"which only a plain PyTorch nn.Module supports, not '{self.framework}'."
                 )
-            if (self.architecture or "") not in FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES:
+            # fl_framework: FedGraph gets its own, narrower allowlist (just
+            # GIN) instead of the general classification-architecture one --
+            # confirmed directly this must be a *strict* per-fl_framework
+            # choice, not a permissive "GIN or any of the 8" union: an
+            # earlier version of this check allowed fl_framework: FedGraph
+            # with e.g. architecture: ResNet18 to pass validation (ResNet18
+            # is itself a valid FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES
+            # entry) even though fl_frameworks/fedgraph_adapter.py's
+            # run_server() ignores config.architecture/config.dataset
+            # entirely and always runs its own real MUTAG/GIN pipeline --
+            # silently mislabeling ground truth exactly the way this
+            # project's own FL/distributed generalization work (see
+            # README.md) already fixed once for hardcoded CIFAR10.
+            architecture_allowlist = (
+                FEDGRAPH_COMPATIBLE_ARCHITECTURES
+                if self.fl_framework == "FedGraph"
+                else FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES
+            )
+            if (self.architecture or "") not in architecture_allowlist:
                 errors.append(
-                    f"paradigm '{self.paradigm}' only works with architecture(s) "
-                    f"{FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES} today -- every fl_frameworks/"
-                    f"distributed_frameworks adapter's training loop expects a classification-"
-                    f"shaped architecture (CrossEntropyLoss over class logits), which "
+                    f"paradigm '{self.paradigm}'"
+                    + (f" with fl_framework '{self.fl_framework}'" if self.fl_framework == "FedGraph" else "")
+                    + f" only works with architecture(s) {architecture_allowlist} today -- every "
+                    f"fl_frameworks/distributed_frameworks adapter's training loop expects a "
+                    f"specific model shape its own data pipeline was built for, which "
                     f"'{self.architecture}' isn't."
                 )
             elif APPLICATIONS.has(self.application):

@@ -88,6 +88,18 @@ fedlab
 # fl_frameworks/nvflare_adapter.py's docstring before relying on it.
 nvflare
 
+# FedGraph: federated graph classification (real MUTAG data via
+# torch_geometric, real Ray-actor trainers). Needs a real C/C++ compiler
+# to build torch-scatter/torch-sparse/torch-cluster/torch-spline-conv
+# native extensions (several minutes on first install) -- see
+# fl_frameworks/fedgraph_adapter.py's docstring. Note: FedGraph's own
+# `attridict` dependency pins `PyYAML==6.0.1` exactly, which `pip check`
+# will flag as a conflict against the newer pyyaml flwr needs -- confirmed
+# directly this is a soft/cosmetic pin mismatch, not a real runtime
+# problem (both packages work correctly with the newer pyyaml actually
+# installed).
+fedgraph
+
 # FairScale distributed-training slice (OSS + ShardedDataParallel) --
 # pure PyTorch extension, no special hardware needed.
 fairscale
