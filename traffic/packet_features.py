@@ -10,6 +10,7 @@ Requires a working packet-capture driver:
 """
 try:
     from scapy.all import AsyncSniffer, get_if_list, wrpcap
+    from scapy.error import Scapy_Exception
 
     SCAPY_AVAILABLE = True
 except ImportError:
@@ -59,7 +60,29 @@ class ScapyCapture:
     def stop(self):
         if self._sniffer is None:
             return
-        self._sniffer.stop()
+        try:
+            self._sniffer.stop()
+        except (Scapy_Exception, AttributeError) as exc:
+            # Real, confirmed scapy behavior on this platform, not a bug in
+            # this project: with conf.use_pcap=False, scapy's AsyncSniffer
+            # falls back to a native-Linux AF_PACKET socket whose sniff
+            # thread never assigns self.stop_cb. Confirmed directly by
+            # reading both scapy versions actually in play here: apt's
+            # python3-scapy 2.5.0 wraps the resulting AttributeError into
+            # its own Scapy_Exception("Unsupported (offline or unsupported
+            # socket)"); this project's own pip-installed scapy 2.7.0 calls
+            # self.stop_cb() with no try/except at all, so the identical
+            # condition surfaces as a bare AttributeError instead -- same
+            # root cause, two different exception types depending on which
+            # scapy is on PATH, so both are caught here. Reproduces
+            # regardless of root/CAP_NET_RAW. The sniff thread (scapy sets
+            # thread.daemon=True) keeps running harmlessly in the
+            # background rather than blocking process exit; whatever
+            # packets it already delivered to _packets via prn= are still
+            # real and worth keeping, so don't let this crash the whole
+            # experiment and lose ground_truth.json over a capture-teardown
+            # quirk unrelated to the actual workload that just ran.
+            self._log(f"Capture stop() raised a known scapy issue, continuing: {exc}")
         self._sniffer = None
         if self._packets:
             wrpcap(str(self.output_path), self._packets)
