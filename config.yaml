@@ -24,7 +24,8 @@ num_requests: 20
 batch_size: 1
 
 capture: true                 # requires scapy + Npcap(Windows)/libpcap(Linux/macOS) + privileges
-capture_interface: null       # null = scapy default interface; see traffic/packet_features.py
+capture_interface: null       # null = auto ("lo" for a loopback host, else scapy's default
+                               # interface) -- see traffic/packet_features.py
 
 tls_cert: null                 # only used when transport: TLS; auto-generates a dev cert if unset
 tls_key: null
