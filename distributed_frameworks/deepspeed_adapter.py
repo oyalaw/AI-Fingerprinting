@@ -110,11 +110,17 @@ def _train(config, logger, event_log, rank):
         loss_fn = torch.nn.CrossEntropyLoss()
 
         model_engine.train()
+        # Same real device-mismatch crash documented in
+        # fl_frameworks/flower_adapter.py's fit() -- the model can be
+        # auto-placed on cuda, but this loader's tensors are plain CPU.
+        # model_engine.device is DeepSpeed's own documented way to get the
+        # engine's actual device for exactly this purpose.
         for round_index in range(config.num_rounds):
             total = 0
             for images, labels in loader:
                 if total >= config.num_requests:
                     break
+                images, labels = images.to(model_engine.device), labels.to(model_engine.device)
                 output = model_engine(images)
                 loss = loss_fn(output, labels)
                 model_engine.backward(loss)  # ZeRO stage 1 gradient reduce-scatter happens here

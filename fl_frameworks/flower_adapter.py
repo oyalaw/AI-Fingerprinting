@@ -103,7 +103,15 @@ class FlowerAdapter(FLFrameworkAdapter):
                 optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
                 loss_fn = torch.nn.CrossEntropyLoss()
                 total = 0
+                # frameworks/pytorch_adapter.py auto-places the model on
+                # cuda when available, but this loader's tensors are plain
+                # CPU tensors -- confirmed directly, a real "Expected all
+                # tensors to be on the same device" crash on a machine that
+                # actually has a GPU (every earlier test in this project
+                # ran CPU-only, so this never surfaced before).
+                device = next(model.parameters()).device
                 for images, labels in loader:
+                    images, labels = images.to(device), labels.to(device)
                     optimizer.zero_grad()
                     output = model(images)
                     loss = loss_fn(output, labels)

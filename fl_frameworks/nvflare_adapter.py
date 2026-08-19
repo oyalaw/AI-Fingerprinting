@@ -151,7 +151,12 @@ _CLIENT_SCRIPT = textwrap.dedent(
             optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
             loss_fn = torch.nn.CrossEntropyLoss()
             total = 0
+            # Same real device-mismatch crash documented in
+            # fl_frameworks/flower_adapter.py's fit() -- the model can be
+            # auto-placed on cuda, but this loader's tensors are plain CPU.
+            device = next(model.parameters()).device
             for images, labels in loader:
+                images, labels = images.to(device), labels.to(device)
                 optimizer.zero_grad()
                 loss = loss_fn(model(images), labels)
                 loss.backward()

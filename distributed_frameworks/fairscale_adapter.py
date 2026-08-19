@@ -77,6 +77,12 @@ def _train(config, logger, event_log, rank):
         architecture_entry = ARCHITECTURES.get(config.architecture)
         model = architecture_entry.build(framework, config)
 
+        # Same real device-mismatch crash documented in
+        # fl_frameworks/flower_adapter.py's fit() -- captured before
+        # ShardedDataParallel wraps the model, since this loader's tensors
+        # are plain CPU and need to match wherever the model actually is
+        # (cuda when available).
+        device = next(model.parameters()).device
         optimizer = OSS(model.parameters(), optim=torch.optim.SGD, lr=0.01)
         sharded_model = ShardedDataParallel(model, sharded_optimizer=optimizer)
 
@@ -89,6 +95,7 @@ def _train(config, logger, event_log, rank):
             for images, labels in loader:
                 if total >= config.num_requests:
                     break
+                images, labels = images.to(device), labels.to(device)
                 optimizer.zero_grad()
                 output = sharded_model(images)
                 loss = loss_fn(output, labels)

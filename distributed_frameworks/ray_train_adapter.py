@@ -98,11 +98,17 @@ def _train_loop_per_worker(config, event_log):
     loss_fn = torch.nn.CrossEntropyLoss()
 
     model.train()
+    # Same real device-mismatch crash documented in
+    # fl_frameworks/flower_adapter.py's fit() -- prepare_model() above
+    # already places the model on this worker's actual device (cuda when
+    # available), but this loader's tensors are plain CPU.
+    device = next(model.parameters()).device
     for round_index in range(config.num_rounds):
         total = 0
         for images, labels in loader:
             if total >= config.num_requests:
                 break
+            images, labels = images.to(device), labels.to(device)
             optimizer.zero_grad()
             output = model(images)
             loss = loss_fn(output, labels)
