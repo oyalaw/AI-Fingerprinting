@@ -1,0 +1,24 @@
+paradigm: federated_learning
+role: server
+device: ubuntu
+framework: PyTorch
+family: CNN
+architecture: ResNet18
+application: Image Classification
+dataset: CIFAR10
+transport: gRPC
+host: 10.42.0.47
+port: 8765
+num_requests: 50
+batch_size: 1
+capture: true
+capture_interface: null
+tls_cert: null
+tls_key: null
+results_dir: experiments/results
+fl_framework: Flower
+distributed_framework: null
+num_clients: 1
+num_rounds: 10
+client_index: 0
+worker_rank: 1
