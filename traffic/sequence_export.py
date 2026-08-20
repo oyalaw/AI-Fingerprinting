@@ -12,6 +12,8 @@ try:
 except ImportError:
     SCAPY_AVAILABLE = False
 
+FIELDNAMES = ["timestamp", "direction", "size_bytes"]
+
 
 def export_sequence(pcap_path, output_csv, server_port):
     if not SCAPY_AVAILABLE:
@@ -30,6 +32,6 @@ def export_sequence(pcap_path, output_csv, server_port):
     output_csv.parent.mkdir(parents=True, exist_ok=True)
     with output_csv.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["timestamp", "direction", "size_bytes"])
+        writer.writerow(FIELDNAMES)
         writer.writerows(rows)
     return output_csv

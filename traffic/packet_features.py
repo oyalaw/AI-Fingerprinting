@@ -34,6 +34,7 @@ except ImportError:
 
 import ipaddress
 import socket
+import time
 
 
 class CaptureUnavailableError(RuntimeError):
@@ -90,6 +91,11 @@ class ScapyCapture:
         self._last_raw = None
         self._last_ts = None
         self._duplicate_count = 0
+        # Public, read after stop() -- e.g. telemetry/manifest.py's
+        # capture provenance block.
+        self.capture_start_epoch = None
+        self.capture_end_epoch = None
+        self.written_packet_count = 0
 
     def _log(self, msg):
         if self.logger:
@@ -147,6 +153,7 @@ class ScapyCapture:
                 store=False,
             )
             self._sniffer.start()
+            self.capture_start_epoch = time.time()
         except PermissionError as exc:
             raise CaptureUnavailableError(
                 "Packet capture needs elevated privileges: run as Administrator "
@@ -180,11 +187,13 @@ class ScapyCapture:
             # quirk unrelated to the actual workload that just ran.
             self._log(f"Capture stop() raised a known scapy issue, continuing: {exc}")
         self._sniffer = None
+        self.capture_end_epoch = time.time()
         if self._duplicate_count:
             self._log(
                 f"Dropped {self._duplicate_count} exact-duplicate packets "
                 "(known Linux 'lo' double-capture behavior, see this module's docstring)."
             )
+        self.written_packet_count = len(self._packets)
         if self._packets:
             wrpcap(str(self.output_path), self._packets)
             self._log(f"Wrote {len(self._packets)} packets to {self.output_path}")

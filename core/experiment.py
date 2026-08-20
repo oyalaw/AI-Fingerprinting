@@ -5,6 +5,7 @@ from core.labels import build_ground_truth, new_experiment_id
 from core.logger import get_logger
 from telemetry.experiment_log import ExperimentLog
 from telemetry.ground_truth import write_ground_truth
+from telemetry.manifest import build_manifest, write_manifest
 from telemetry.resource_monitor import ResourceMonitor
 from traffic.burst_features import export_bursts
 from traffic.flow_features import export_flow_features
@@ -70,6 +71,7 @@ class Experiment:
         timing["end"] = time.time()
 
         sequence_path = flow_features_path = bursts_path = features_path = None
+        feature_row_count = None
         if capture and pcap_path.exists():
             sequence_path = self.results_dir / f"{self.experiment_id}_sequence.csv"
             export_sequence(pcap_path, sequence_path, server_port=self.config.port)
@@ -82,6 +84,21 @@ class Experiment:
 
             features_path = self.results_dir / f"{self.experiment_id}_features.csv"
             export_features(pcap_path, features_path, server_port=self.config.port, experiment_id=self.experiment_id)
+            with features_path.open(encoding="utf-8") as f:
+                feature_row_count = sum(1 for _ in f) - 1  # header doesn't count as a data row
+
+        manifest_path = self.results_dir / f"{self.experiment_id}_manifest.json"
+        manifest = build_manifest(
+            self.experiment_id,
+            self.config.role,
+            self.config.host,
+            pcap_path=pcap_path if capture else None,
+            capture=capture,
+            sequence_csv=sequence_path,
+            features_csv=features_path,
+            feature_row_count=feature_row_count,
+        )
+        write_manifest(manifest_path, manifest)
 
         artifacts = {
             "pcap": str(pcap_path) if capture else None,
@@ -90,6 +107,7 @@ class Experiment:
             "bursts_csv": str(bursts_path) if bursts_path else None,
             "features_csv": str(features_path) if features_path else None,
             "resource_csv": str(resource_path) if resource_monitor else None,
+            "manifest": str(manifest_path),
             "events_log": str(self.results_dir / "events.jsonl"),
         }
         ground_truth = build_ground_truth(self.config, self.experiment_id, timing, artifacts)
