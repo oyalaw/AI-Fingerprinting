@@ -15,7 +15,7 @@ distributed_frameworks/ddp_adapter.py already uses. Server is rank 0
 `sample_ratio` of clients per round), each client is rank 1..N
 (`PassiveClientManager` + `SGDClientTrainer`).
 
-Reuses the same PyTorch/Image Classification combo as
+Reuses the same PyTorch training-data pipeline as
 fl_frameworks/flower_adapter.py, partitioned across clients the same way
 (`_ClientPartitionedDataset` here mirrors `_partition_loader` there) --
 FedLab ships its own disk-persisting `fedlab.contrib.dataset.PartitionedCIFAR10`,
@@ -24,7 +24,9 @@ not a hardcoded CIFAR10) matches this project's existing dataset/family
 conventions more consistently than adopting FedLab's separate on-disk
 partition cache. See core/config.py's FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES
 and core/training_data.py for exactly which architecture/application/
-dataset combinations that supports and why.
+dataset combinations that supports and why -- including Autoencoder/DDPM's
+reconstruction/denoising objectives (core/training_objectives.py), not
+just classification.
 
 **What was actually tested here, and what's still unresolved:** a real bug
 was found and fixed -- `SyncServerHandler` lives in
@@ -70,7 +72,8 @@ them.
 """
 from core.classification_metrics import compute_classification_metrics
 from core.registry import ARCHITECTURES, FL_FRAMEWORKS, FRAMEWORKS
-from core.training_data import build_classification_dataset
+from core.training_data import build_training_dataset
+from core.training_objectives import get_training_step, is_classification
 from fl_frameworks.base import FLFrameworkAdapter
 
 
@@ -92,7 +95,7 @@ class _ClientPartitionedDataset:
     def get_dataloader(self, client_id, batch_size):
         from torch.utils.data import DataLoader, Subset
 
-        full_dataset = build_classification_dataset(
+        full_dataset = build_training_dataset(
             self.config, self.num_clients * self.config.num_requests
         )
         indices = list(range(client_id, len(full_dataset), self.num_clients))[
@@ -172,19 +175,23 @@ def _event_logging_trainer_cls():
             )
             event_log.event("fl_fit_start", client_index=client_index, round=round_number)
             self._model.train()
+            # Same device-detection pattern fl_frameworks/flower_adapter.py
+            # uses -- frameworks/pytorch_adapter.py auto-places the model
+            # on cuda when available, so read the model's own actual
+            # device rather than trusting self.cuda/self.device (which
+            # this adapter never sets to non-default values anyway).
+            device = next(self._model.parameters()).device
+            training_step = get_training_step(self._fp_config.architecture)
             total = 0
             total_loss = 0.0
             for _ in range(self.epochs):
-                for data, target in train_loader:
-                    if self.cuda:
-                        data, target = data.cuda(self.device), target.cuda(self.device)
-                    outputs = self._model(data)
-                    loss = self.criterion(outputs, target)
+                for batch in train_loader:
                     self.optimizer.zero_grad()
+                    loss, n = training_step(self._model, batch, device)
                     loss.backward()
                     self.optimizer.step()
-                    total += len(target)
-                    total_loss += loss.item() * len(target)
+                    total += n
+                    total_loss += loss.item() * n
             avg_loss = total_loss / total if total else 0.0
             event_log.event(
                 "fl_fit_end", client_index=client_index, round=round_number, examples=total, loss=avg_loss
@@ -201,31 +208,42 @@ def _event_logging_trainer_cls():
             # documents for its own evaluate().
             event_log.event("fl_evaluate_start", client_index=client_index, round=round_number)
             self._model.eval()
-            all_predictions, all_labels = [], []
             eval_loss_total = 0.0
-            with torch.no_grad():
-                for data, target in train_loader:
-                    if self.cuda:
-                        data, target = data.cuda(self.device), target.cuda(self.device)
-                    output = self._model(data)
-                    eval_loss_total += self.criterion(output, target).item() * len(target)
-                    all_predictions.append(output.argmax(dim=1).cpu())
-                    all_labels.append(target.cpu())
-            predictions = torch.cat(all_predictions) if all_predictions else torch.empty(0, dtype=torch.long)
-            labels_tensor = torch.cat(all_labels) if all_labels else torch.empty(0, dtype=torch.long)
-            eval_examples = len(labels_tensor)
+            eval_examples = 0
+            metrics = {}
+            if is_classification(self._fp_config.architecture):
+                all_predictions, all_labels = [], []
+                with torch.no_grad():
+                    for data, target in train_loader:
+                        data, target = data.to(device), target.to(device)
+                        output = self._model(data)
+                        eval_loss_total += torch.nn.functional.cross_entropy(output, target).item() * len(target)
+                        eval_examples += len(target)
+                        all_predictions.append(output.argmax(dim=1).cpu())
+                        all_labels.append(target.cpu())
+                predictions = torch.cat(all_predictions) if all_predictions else torch.empty(0, dtype=torch.long)
+                labels_tensor = torch.cat(all_labels) if all_labels else torch.empty(0, dtype=torch.long)
+                num_classes = ARCHITECTURES.get(self._fp_config.architecture).meta.get("num_classes")
+                metrics = compute_classification_metrics(predictions, labels_tensor, num_classes)
+            else:
+                # Reconstruction/denoising: no classification label to
+                # score against -- just measure the same training
+                # objective's own loss on this client's partition.
+                with torch.no_grad():
+                    for batch in train_loader:
+                        loss, n = training_step(self._model, batch, device)
+                        eval_loss_total += loss.item() * n
+                        eval_examples += n
             eval_avg_loss = (eval_loss_total / eval_examples) if eval_examples else 0.0
-            num_classes = ARCHITECTURES.get(self._fp_config.architecture).meta.get("num_classes")
-            metrics = compute_classification_metrics(predictions, labels_tensor, num_classes)
             event_log.event(
                 "fl_evaluate_end", client_index=client_index, round=round_number, loss=eval_avg_loss, **metrics
             )
             self._model.train()
 
             event_log.event("fl_upload_ready", client_index=client_index, round=round_number)
+            metrics_summary = f"accuracy={metrics['accuracy']:.4f}" if metrics else f"loss={eval_avg_loss:.4f}"
             self._fp_logger.info(
-                f"Client {client_index} round {round_number}: trained on {total} examples, "
-                f"accuracy={metrics['accuracy']:.4f}"
+                f"Client {client_index} round {round_number}: trained on {total} examples, {metrics_summary}"
             )
 
     return EventLoggingClientTrainer

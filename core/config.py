@@ -59,11 +59,16 @@ VALID_ROLES = ("client", "server", "standalone")
 # paired with num_classes=10 architectures without a config.yaml error
 # well before any training loop runs.
 #
-# core/training_data.py's build_classification_dataset() is what actually
-# loads whichever dataset is selected via the DATASETS/APPLICATIONS
-# registries (the same abstraction paradigm=inference uses), instead of
-# every adapter hardcoding its own torchvision.datasets.CIFAR10 call the
-# way they all used to.
+# core/training_data.py's build_training_dataset() is what actually loads
+# whichever dataset is selected via the DATASETS/APPLICATIONS registries
+# (the same abstraction paradigm=inference uses), instead of every
+# adapter hardcoding its own torchvision.datasets.CIFAR10 call the way
+# they all used to. It dispatches per architecture on training_objective
+# metadata (core/training_objectives.py) to one of three loaders --
+# classification (CrossEntropyLoss against a label), reconstruction
+# (Autoencoder: MSE against its own input), or denoising (DDPM: MSE
+# against synthetic noise it's asked to predict) -- so this tuple is no
+# longer classification-only despite the name.
 #
 # A single source of truth here, reused by both this module's validate()
 # and main.py's --interactive locking, so the two can't drift apart.
@@ -71,6 +76,8 @@ FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES = (
     "ResNet18", "ResNet50", "MobileNetV2", "ViT",  # Image Classification
     "BERT", "DistilBERT",  # Sentiment Analysis
     "LSTM", "GRU", "MLP",  # Activity Recognition
+    "Autoencoder",  # Image Reconstruction
+    "DDPM",  # Image Generation
 )
 FL_DISTRIBUTED_FRAMEWORK = "PyTorch"
 

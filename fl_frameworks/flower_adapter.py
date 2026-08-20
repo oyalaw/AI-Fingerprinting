@@ -8,14 +8,17 @@ gRPC transport internally -- our job is just to start it with the right
 config and let scapy capture whatever port it opens.
 
 Data loading goes through core/training_data.py's
-build_classification_dataset() -- the same DATASETS/APPLICATIONS registry
+build_training_dataset() -- the same DATASETS/APPLICATIONS registry
 abstraction paradigm=inference uses -- rather than hardcoding
 torchvision.datasets.CIFAR10 the way this adapter originally did. See
 core/config.py's FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES and
 core/training_data.py for exactly which architecture/application/dataset
 combinations that supports and why (Image Classification, Sentiment
-Analysis, and Activity Recognition; not e.g. Node Classification's
-transductive GCN or any generative application).
+Analysis, Activity Recognition, Image Reconstruction, and Image
+Generation; not e.g. Node Classification's transductive GCN). The
+training objective (classification/reconstruction/denoising) is picked
+per architecture via core/training_objectives.py, not hardcoded to
+CrossEntropyLoss here.
 
 torch/torchvision/flwr are imported lazily inside functions, not at module
 scope, so `python main.py --list` can enumerate this registration without
@@ -23,7 +26,8 @@ any of them installed -- only actually running the FL slice needs them.
 """
 from core.classification_metrics import compute_classification_metrics
 from core.registry import ARCHITECTURES, FL_FRAMEWORKS, FRAMEWORKS
-from core.training_data import build_classification_dataset
+from core.training_data import build_training_dataset
+from core.training_objectives import get_training_step, is_classification
 from fl_frameworks.base import FLFrameworkAdapter
 
 
@@ -50,7 +54,7 @@ def _partition_loader(config, client_index):
     from torch.utils.data import DataLoader, Subset
 
     num_clients = max(config.num_clients, 1)
-    full_dataset = build_classification_dataset(config, num_clients * config.num_requests)
+    full_dataset = build_training_dataset(config, num_clients * config.num_requests)
     indices = list(range(client_index, len(full_dataset), num_clients))[: config.num_requests]
     subset = Subset(full_dataset, indices)
 
@@ -88,6 +92,11 @@ class FlowerAdapter(FLFrameworkAdapter):
             # client's evaluate() return -- see run_client below. Weighted
             # by num_examples so a client with a larger local partition
             # counts proportionally more, standard FedAvg-style weighting.
+            # Reconstruction/denoising clients return an empty metrics
+            # dict (no classification labels to score) -- nothing to
+            # aggregate or log here in that case.
+            if not is_classification(config.architecture):
+                return {}
             total = sum(n for n, _ in results)
             if total == 0:
                 return {}
@@ -152,7 +161,7 @@ class FlowerAdapter(FLFrameworkAdapter):
                 model.train()
                 event_log.event("fl_fit_start", client_index=client_index, round=server_round)
                 optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
-                loss_fn = torch.nn.CrossEntropyLoss()
+                training_step = get_training_step(config.architecture)
                 total = 0
                 total_loss = 0.0
                 # frameworks/pytorch_adapter.py auto-places the model on
@@ -162,15 +171,13 @@ class FlowerAdapter(FLFrameworkAdapter):
                 # actually has a GPU (every earlier test in this project
                 # ran CPU-only, so this never surfaced before).
                 device = next(model.parameters()).device
-                for images, labels in loader:
-                    images, labels = images.to(device), labels.to(device)
+                for batch in loader:
                     optimizer.zero_grad()
-                    output = model(images)
-                    loss = loss_fn(output, labels)
+                    loss, n = training_step(model, batch, device)
                     loss.backward()
                     optimizer.step()
-                    total += len(labels)
-                    total_loss += loss.item() * len(labels)
+                    total += n
+                    total_loss += loss.item() * n
                 avg_loss = total_loss / total if total else 0.0
                 event_log.event(
                     "fl_fit_end", client_index=client_index, round=server_round, examples=total, loss=avg_loss
@@ -194,22 +201,10 @@ class FlowerAdapter(FLFrameworkAdapter):
                 )
                 model.eval()
                 event_log.event("fl_evaluate_start", client_index=client_index, round=server_round)
-                loss_fn = torch.nn.CrossEntropyLoss()
                 device = next(model.parameters()).device
                 total_loss = 0.0
-                all_predictions = []
-                all_labels = []
-                with torch.no_grad():
-                    for images, labels in loader:
-                        images, labels = images.to(device), labels.to(device)
-                        output = model(images)
-                        total_loss += loss_fn(output, labels).item() * len(labels)
-                        all_predictions.append(output.argmax(dim=1).cpu())
-                        all_labels.append(labels.cpu())
-                predictions = torch.cat(all_predictions) if all_predictions else torch.empty(0, dtype=torch.long)
-                true_labels = torch.cat(all_labels) if all_labels else torch.empty(0, dtype=torch.long)
-                num_examples = len(true_labels)
-                avg_loss = (total_loss / num_examples) if num_examples else 0.0
+                num_examples = 0
+                metrics = {}
                 # Evaluated on this client's own local partition -- the
                 # same one fit() just trained on, not a separate held-out
                 # split (none exists in this pipeline) -- consistent with
@@ -217,8 +212,34 @@ class FlowerAdapter(FLFrameworkAdapter):
                 # documented elsewhere (e.g.
                 # fl_frameworks/fedscale_adapter.py): these numbers track
                 # convergence trend across rounds, not generalization.
-                num_classes = ARCHITECTURES.get(config.architecture).meta.get("num_classes")
-                metrics = compute_classification_metrics(predictions, true_labels, num_classes)
+                if is_classification(config.architecture):
+                    loss_fn = torch.nn.CrossEntropyLoss()
+                    all_predictions = []
+                    all_labels = []
+                    with torch.no_grad():
+                        for images, labels in loader:
+                            images, labels = images.to(device), labels.to(device)
+                            output = model(images)
+                            total_loss += loss_fn(output, labels).item() * len(labels)
+                            num_examples += len(labels)
+                            all_predictions.append(output.argmax(dim=1).cpu())
+                            all_labels.append(labels.cpu())
+                    predictions = torch.cat(all_predictions) if all_predictions else torch.empty(0, dtype=torch.long)
+                    true_labels = torch.cat(all_labels) if all_labels else torch.empty(0, dtype=torch.long)
+                    num_classes = ARCHITECTURES.get(config.architecture).meta.get("num_classes")
+                    metrics = compute_classification_metrics(predictions, true_labels, num_classes)
+                else:
+                    # Reconstruction/denoising: no classification label to
+                    # score against -- just measure the same training
+                    # objective's own loss (MSE, either way) on this
+                    # client's partition, no accuracy/precision/recall/F1.
+                    training_step = get_training_step(config.architecture)
+                    with torch.no_grad():
+                        for batch in loader:
+                            loss, n = training_step(model, batch, device)
+                            total_loss += loss.item() * n
+                            num_examples += n
+                avg_loss = (total_loss / num_examples) if num_examples else 0.0
                 event_log.event(
                     "fl_evaluate_end", client_index=client_index, round=server_round, loss=avg_loss, **metrics
                 )

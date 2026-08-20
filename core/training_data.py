@@ -25,15 +25,23 @@ samples(n) yields the *same* whole-graph array n times, each paired with
 the full list of all 34 node labels at once (a list, not a scalar --
 would crash the label_names set-comprehension below outright), and GCN's
 forward pass is transductive (one graph in, all-node logits out per
-call, no batch-of-independent-samples concept at all). Every generative/
-structured-output application (Text Generation, Image Generation, Speech
-Recognition, Object Detection, Segmentation, Image Reconstruction)
-doesn't have a scalar classification label either and would need its own
-invented-from-scratch loss/training logic. See
+call, no batch-of-independent-samples concept at all). Every other
+generative/structured-output application (Text Generation, Speech
+Recognition, Object Detection, Segmentation) still doesn't fit either.
+
+Autoencoder (Image Reconstruction) and DDPM (Image Generation) DO now
+have their own loaders below -- build_reconstruction_dataset() and
+build_denoising_dataset() -- once core/training_objectives.py gave every
+FL/distributed adapter somewhere to dispatch a non-classification loss
+to. build_training_dataset() is the one entry point adapters should
+actually call; it picks whichever of the three loaders below matches
+config.architecture's own training_objective metadata, so adapter code
+doesn't need to know which shape a given architecture needs. See
 core/config.py's FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES for the enforced
 set.
 """
 from core.registry import APPLICATIONS, ARCHITECTURES, DATASETS
+from core.training_objectives import get_training_objective
 
 
 def build_classification_dataset(config, total_samples_needed):
@@ -85,3 +93,75 @@ def build_classification_dataset(config, total_samples_needed):
     targets = torch.tensor([label_to_index[label] for _, label in samples], dtype=torch.long)
 
     return TensorDataset(inputs, targets)
+
+
+def build_reconstruction_dataset(config, total_samples_needed):
+    """Autoencoder: returns a TensorDataset of (input,) 1-tuples -- the
+    reconstruction target IS the input (core/training_objectives.py's
+    _reconstruction_step computes MSE against it directly), so there's no
+    second tensor to build the way build_classification_dataset() builds
+    labels. Goes through Application.preprocess() normally (unlike
+    build_denoising_dataset() below): Image Reconstruction's preprocess()
+    already returns the real image tensor DDPM's Image Generation
+    deliberately doesn't (see that function's own docstring for why)."""
+    import torch
+    from torch.utils.data import TensorDataset
+
+    application = APPLICATIONS.get(config.application).build()
+    dataset = DATASETS.get(config.dataset).build()
+
+    samples = list(dataset.samples(total_samples_needed))
+    if not samples:
+        raise RuntimeError(
+            f"dataset '{config.dataset}' produced no samples for "
+            f"paradigm='{config.paradigm}' -- nothing to train on."
+        )
+
+    inputs = torch.stack([application.preprocess(raw) for raw, _ in samples])
+    return TensorDataset(inputs)
+
+
+def build_denoising_dataset(config, total_samples_needed):
+    """DDPM: returns a TensorDataset of (image,) 1-tuples -- real images
+    to add noise to during training, deliberately NOT going through
+    Application.preprocess() the way every other loader here does.
+    applications/image_generation.py's preprocess() is inference-shaped on
+    purpose (a generation *request* genuinely has no real input, only
+    noise), which is exactly wrong for training: DDPM's denoising
+    objective needs the real image so it has something to noise and then
+    learn to recover. Loads config.dataset directly and applies the same
+    HWC-uint8 -> CHW-float01 conversion families/autoencoder's
+    scale_to_unit_range() already provides for Image Reconstruction,
+    rather than duplicating that conversion here."""
+    import torch
+    from torch.utils.data import TensorDataset
+
+    from families.autoencoder import scale_to_unit_range
+
+    dataset = DATASETS.get(config.dataset).build()
+    samples = list(dataset.samples(total_samples_needed))
+    if not samples:
+        raise RuntimeError(
+            f"dataset '{config.dataset}' produced no samples for "
+            f"paradigm='{config.paradigm}' -- nothing to train on."
+        )
+
+    inputs = torch.stack([scale_to_unit_range(raw) for raw, _ in samples])
+    return TensorDataset(inputs)
+
+
+_DATASET_BUILDERS = {
+    "classification": build_classification_dataset,
+    "reconstruction": build_reconstruction_dataset,
+    "denoising": build_denoising_dataset,
+}
+
+
+def build_training_dataset(config, total_samples_needed):
+    """The one entry point fl_frameworks/*.py and distributed_frameworks/*.py
+    adapters should call -- dispatches to whichever loader above matches
+    config.architecture's own training_objective metadata (core/
+    training_objectives.py), so adapter code doesn't need its own
+    if/elif over architecture names."""
+    objective = get_training_objective(config.architecture)
+    return _DATASET_BUILDERS[objective](config, total_samples_needed)

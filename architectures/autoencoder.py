@@ -48,4 +48,10 @@ ARCHITECTURES.register(
     framework="PyTorch",
     application="Image Reconstruction",
     input_shape=(3, 32, 32),
+    # core/training_objectives.py dispatches on this for FL/distributed
+    # training -- reconstruction loss (MSE against the model's own input),
+    # not classification's CrossEntropyLoss-against-a-label. Every
+    # classification architecture omits this field and implicitly
+    # defaults to "classification" (see that module's own docstring).
+    training_objective="reconstruction",
 )(build)

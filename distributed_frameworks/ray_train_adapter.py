@@ -74,7 +74,8 @@ def _train_loop_per_worker(config, event_log):
     from torch.utils.data import DataLoader, DistributedSampler
 
     from core.registry import discover_all
-    from core.training_data import build_classification_dataset
+    from core.training_data import build_training_dataset
+    from core.training_objectives import get_trainable_module, get_training_step, set_trainable_module
 
     discover_all()
 
@@ -85,17 +86,22 @@ def _train_loop_per_worker(config, event_log):
     framework = FRAMEWORKS.get(config.framework).build()
     architecture_entry = ARCHITECTURES.get(config.architecture)
     model = framework.load_model(architecture_entry, config)
-    model = prepare_model(model)
+    # architectures/ddpm.py's DDPM needs only its inner noise_predictor
+    # handed to prepare_model(), not the whole T-step sampling loop -- see
+    # core/training_objectives.py's get_trainable_module() docstring.
+    trainable = get_trainable_module(model, config.architecture)
+    trainable = prepare_model(trainable)
+    model = set_trainable_module(model, config.architecture, trainable)
 
-    dataset = build_classification_dataset(config, world_size * config.num_requests)
+    dataset = build_training_dataset(config, world_size * config.num_requests)
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank)
     # Same real BatchNorm2d/batch-size-1 crash documented in
     # fl_frameworks/flower_adapter.py's _partition_loader -- floor at 2,
     # drop any leftover partial batch of 1.
     loader = DataLoader(dataset, batch_size=max(config.batch_size, 2), sampler=sampler, drop_last=True)
 
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
-    loss_fn = torch.nn.CrossEntropyLoss()
+    optimizer = torch.optim.SGD(trainable.parameters(), lr=0.01)
+    training_step = get_training_step(config.architecture)
 
     model.train()
     # Same real device-mismatch crash documented in
@@ -105,16 +111,14 @@ def _train_loop_per_worker(config, event_log):
     device = next(model.parameters()).device
     for round_index in range(config.num_rounds):
         total = 0
-        for images, labels in loader:
+        for batch in loader:
             if total >= config.num_requests:
                 break
-            images, labels = images.to(device), labels.to(device)
             optimizer.zero_grad()
-            output = model(images)
-            loss = loss_fn(output, labels)
+            loss, n = training_step(model, batch, device)
             loss.backward()  # DistributedDataParallel's gradient all-reduce happens here
             optimizer.step()
-            total += len(labels)
+            total += n
         event_log.event("ray_train_round_complete", rank=rank, round=round_index, examples=total)
         # Every worker must call report() each round -- it's a synchronization
         # barrier across the whole worker group, not a fire-and-forget log call

@@ -52,7 +52,8 @@ full rounds cleanly, and `ground_truth.json` correctly recorded
 import os
 
 from core.registry import ARCHITECTURES, DISTRIBUTED_FRAMEWORKS, FRAMEWORKS
-from core.training_data import build_classification_dataset
+from core.training_data import build_training_dataset
+from core.training_objectives import get_trainable_module, get_training_step, set_trainable_module
 from distributed_frameworks.base import DistributedFrameworkAdapter
 
 
@@ -72,7 +73,7 @@ def _build_loader(config, world_size):
     import torch.distributed as dist
     from torch.utils.data import DataLoader, DistributedSampler
 
-    dataset = build_classification_dataset(config, world_size * config.num_requests)
+    dataset = build_training_dataset(config, world_size * config.num_requests)
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=dist.get_rank())
 
     # Same real BatchNorm2d/batch-size-1 crash documented in
@@ -92,6 +93,12 @@ def _train(config, logger, event_log, rank):
         architecture_entry = ARCHITECTURES.get(config.architecture)
         model = architecture_entry.build(framework, config)
 
+        # architectures/ddpm.py's DDPM needs only its inner noise_predictor
+        # handed to deepspeed.initialize(), not the whole T-step sampling
+        # loop -- see core/training_objectives.py's get_trainable_module()
+        # docstring.
+        trainable = get_trainable_module(model, config.architecture)
+
         micro_batch = max(config.batch_size, 1)
         ds_config = {
             "train_batch_size": micro_batch * world_size,
@@ -101,31 +108,35 @@ def _train(config, logger, event_log, rank):
             "zero_allow_untested_optimizer": True,
         }
         model_engine, _, _, _ = deepspeed.initialize(
-            model=model, model_parameters=model.parameters(), config=ds_config
+            model=trainable, model_parameters=trainable.parameters(), config=ds_config
         )
+        model = set_trainable_module(model, config.architecture, model_engine)
+        # get_trainable_module() re-derives the same model_engine reference
+        # from `model` (== model_engine itself for classification/
+        # reconstruction, == model.noise_predictor for denoising) -- this
+        # is DeepSpeed's own engine object, the thing .backward()/.step()
+        # actually get called on below, which differs from `model` in the
+        # denoising case.
+        engine = get_trainable_module(model, config.architecture)
 
         loader = _build_loader(config, world_size)
-        import torch
+        training_step = get_training_step(config.architecture)
 
-        loss_fn = torch.nn.CrossEntropyLoss()
-
-        model_engine.train()
+        model.train()
         # Same real device-mismatch crash documented in
         # fl_frameworks/flower_adapter.py's fit() -- the model can be
         # auto-placed on cuda, but this loader's tensors are plain CPU.
-        # model_engine.device is DeepSpeed's own documented way to get the
+        # engine.device is DeepSpeed's own documented way to get the
         # engine's actual device for exactly this purpose.
         for round_index in range(config.num_rounds):
             total = 0
-            for images, labels in loader:
+            for batch in loader:
                 if total >= config.num_requests:
                     break
-                images, labels = images.to(model_engine.device), labels.to(model_engine.device)
-                output = model_engine(images)
-                loss = loss_fn(output, labels)
-                model_engine.backward(loss)  # ZeRO stage 1 gradient reduce-scatter happens here
-                model_engine.step()  # ZeRO stage 1 optimizer-state-sharded update happens here
-                total += len(labels)
+                loss, n = training_step(model, batch, engine.device)
+                engine.backward(loss)  # ZeRO stage 1 gradient reduce-scatter happens here
+                engine.step()  # ZeRO stage 1 optimizer-state-sharded update happens here
+                total += n
             event_log.event("deepspeed_round_complete", rank=rank, round=round_index, examples=total)
             logger.info(f"[rank {rank}] round {round_index} complete ({total} examples)")
     finally:

@@ -107,4 +107,11 @@ ARCHITECTURES.register(
     framework="PyTorch",
     application="Image Generation",
     input_shape=(3, 32, 32),
+    # core/training_objectives.py dispatches on this for FL/distributed
+    # training -- real DDPM denoising loss (predict the noise added at a
+    # randomly-sampled timestep, MSE against the actual noise), computed
+    # directly against this module's own _DDPMSampler internals
+    # (num_timesteps/alphas_cumprod/noise_predictor), not the T-step
+    # reverse-sampling loop forward() implements for inference.
+    training_objective="denoising",
 )(build)
