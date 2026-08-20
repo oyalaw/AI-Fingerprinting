@@ -153,6 +153,12 @@ def build_denoising_dataset(config, total_samples_needed):
 _DATASET_BUILDERS = {
     "classification": build_classification_dataset,
     "reconstruction": build_reconstruction_dataset,
+    # AnomalyAutoencoder's own application (Anomaly Detection) goes
+    # through Application.preprocess() the same way Image Reconstruction
+    # does (both real, [0,1]-scaled CIFAR10 images, no noise-discarding
+    # the way Image Generation's preprocess() does) -- build_reconstruction_dataset
+    # reused unchanged, not duplicated, for exactly that reason.
+    "anomaly_reconstruction": build_reconstruction_dataset,
     "denoising": build_denoising_dataset,
 }
 

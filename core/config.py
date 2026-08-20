@@ -77,6 +77,7 @@ FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES = (
     "BERT", "DistilBERT",  # Sentiment Analysis
     "LSTM", "GRU", "MLP",  # Activity Recognition
     "Autoencoder",  # Image Reconstruction
+    "AnomalyAutoencoder",  # Anomaly Detection
     "DDPM",  # Image Generation
 )
 FL_DISTRIBUTED_FRAMEWORK = "PyTorch"

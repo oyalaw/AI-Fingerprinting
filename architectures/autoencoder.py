@@ -104,15 +104,15 @@ ARCHITECTURES.register(
     framework="PyTorch",
     application="Anomaly Detection",
     input_shape=(3, 32, 32),
-    # Deliberately NOT wired into FL/distributed training (no
-    # training_objective set, so core/training_objectives.py would treat
-    # it as "classification" if it were ever added there by mistake) --
-    # reconstruction-error-based anomaly detection is a threshold decision
-    # on top of reconstruction, not its own distinct trainable objective;
-    # it would train via the exact same "reconstruction" objective the
-    # plain Autoencoder already has, on the *inner* self.autoencoder
-    # submodule specifically, which core/training_objectives.py doesn't
-    # yet know to reach into. Add that mapping explicitly if FL support
-    # for this one is wanted later, rather than let it silently fall
-    # through to the wrong default.
+    # Its own distinct training_objective, not "reconstruction" --
+    # trains via the exact same MSE-against-its-own-input loss the plain
+    # Autoencoder does, but computed one attribute deeper (against
+    # self.autoencoder specifically, see _AnomalyAutoencoder.forward()
+    # above), since this architecture's own top-level forward() returns
+    # a reconstruction-error *score*, not something a reconstruction
+    # loss can be computed against directly. core/training_objectives.py's
+    # _anomaly_reconstruction_step and get_trainable_module()/
+    # set_trainable_module() both know to reach into .autoencoder for
+    # this specific value.
+    training_objective="anomaly_reconstruction",
 )(build_anomaly_detector)
