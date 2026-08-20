@@ -160,6 +160,13 @@ _DATASET_BUILDERS = {
     # reused unchanged, not duplicated, for exactly that reason.
     "anomaly_reconstruction": build_reconstruction_dataset,
     "denoising": build_denoising_dataset,
+    # DCGAN's own application (Image Generation) discards raw_sample and
+    # returns pure noise -- correct for an inference request, exactly
+    # wrong for adversarial training, which needs real images for the
+    # discriminator to learn "real" from -- same reasoning
+    # build_denoising_dataset() already documents for DDPM, reused
+    # unchanged rather than duplicated.
+    "adversarial": build_denoising_dataset,
 }
 
 

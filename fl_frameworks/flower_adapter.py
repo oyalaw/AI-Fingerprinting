@@ -27,7 +27,7 @@ any of them installed -- only actually running the FL slice needs them.
 from core.classification_metrics import compute_classification_metrics
 from core.registry import ARCHITECTURES, FL_FRAMEWORKS, FRAMEWORKS
 from core.training_data import build_training_dataset
-from core.training_objectives import get_training_step, is_classification
+from core.training_objectives import get_training_step, is_classification, prepare_model_for_training
 from fl_frameworks.base import FLFrameworkAdapter
 
 
@@ -71,6 +71,15 @@ class FlowerAdapter(FLFrameworkAdapter):
         import flwr as fl
 
         model = _build_model(config)
+        # Adversarial training (architectures/dcgan.py's DCGAN) needs a
+        # discriminator attached before initial_parameters is built below
+        # -- otherwise the server's own broadcast state_dict would be
+        # missing those weights entirely, and _set_parameters()'s
+        # zip()-based assignment would silently leave every client's own
+        # discriminator un-aggregated across rounds (see
+        # core/training_objectives.py's prepare_model_for_training() for
+        # the real reason). A no-op for every other architecture.
+        model = prepare_model_for_training(model, config.architecture)
 
         def fit_config(server_round):
             event_log.event("fl_round_start", round=server_round)
@@ -135,6 +144,15 @@ class FlowerAdapter(FLFrameworkAdapter):
         import torch
 
         model = _build_model(config)
+        # Adversarial training (architectures/dcgan.py's DCGAN) needs a
+        # discriminator attached before initial_parameters is built below
+        # -- otherwise the server's own broadcast state_dict would be
+        # missing those weights entirely, and _set_parameters()'s
+        # zip()-based assignment would silently leave every client's own
+        # discriminator un-aggregated across rounds (see
+        # core/training_objectives.py's prepare_model_for_training() for
+        # the real reason). A no-op for every other architecture.
+        model = prepare_model_for_training(model, config.architecture)
         client_index = config.client_index
         loader = _partition_loader(config, client_index)
 

@@ -70,6 +70,49 @@ def _anomaly_reconstruction_step(model, batch, device):
     return loss, len(inputs)
 
 
+def _adversarial_step(model, batch, device):
+    """batch = (real_images,) -- architectures/dcgan.py's DCGAN needs a
+    real discriminator to train against at all, which doesn't exist on
+    the plain served/registered generator (paradigm=inference only ever
+    needs the generator) -- prepare_model_for_training() below attaches
+    one as model.discriminator before this ever runs.
+
+    A real, if simplified, adversarial training technique: a
+    SIMULTANEOUS gradient update (both networks' losses summed into one
+    scalar, one .backward() call) rather than the more common
+    alternating G-then-D scheme -- a known GAN training variant
+    (simultaneous SGD/Adam updates), not a fabricated proxy, chosen
+    specifically so this still fits the exact same one-loss/one-backward/
+    one-optimizer shape every other training_objective already uses:
+    model.parameters() already covers both networks together (attaching
+    an nn.Module as an attribute registers it as a real submodule), so
+    no adapter needs its own special-cased two-optimizer alternation
+    code. fake_images.detach() when scoring the discriminator on fakes
+    is still real and necessary here -- without it the discriminator's
+    loss term would backprop into the generator too, which the
+    generator's own loss term (undetached) already does correctly on
+    purpose."""
+    (real_images,) = batch
+    real_images = real_images.to(device)
+    batch_size = real_images.shape[0]
+
+    noise = torch.randn_like(real_images)
+    fake_images = model(noise)
+
+    real_labels = torch.ones(batch_size, device=device)
+    fake_labels = torch.zeros(batch_size, device=device)
+
+    d_real = model.discriminator(real_images)
+    d_fake_detached = model.discriminator(fake_images.detach())
+    d_fake_for_generator = model.discriminator(fake_images)
+
+    loss_d_real = torch.nn.functional.binary_cross_entropy(d_real, real_labels)
+    loss_d_fake = torch.nn.functional.binary_cross_entropy(d_fake_detached, fake_labels)
+    loss_g = torch.nn.functional.binary_cross_entropy(d_fake_for_generator, real_labels)
+
+    return loss_d_real + loss_d_fake + loss_g, batch_size
+
+
 def _denoising_step(model, batch, device):
     """batch = (images,) real images (NOT the pure noise
     architectures/ddpm.py's own forward() samples from at inference --
@@ -98,6 +141,7 @@ _TRAINING_STEPS = {
     "classification": _classification_step,
     "reconstruction": _reconstruction_step,
     "anomaly_reconstruction": _anomaly_reconstruction_step,
+    "adversarial": _adversarial_step,
     "denoising": _denoising_step,
 }
 
@@ -132,6 +176,21 @@ def is_classification(architecture_name):
     only meaningful when the model outputs class logits -- FL adapters
     use this to decide whether to compute and log them at all."""
     return get_training_objective(architecture_name) == "classification"
+
+
+def prepare_model_for_training(model, architecture_name):
+    """Called once, right after building the model and before
+    constructing any optimizer -- some objectives need the model object
+    augmented with an extra submodule before training can start at all.
+    Adversarial training needs a real discriminator attached
+    (architectures/dcgan.py's attach_discriminator()), which doesn't
+    exist on the plain served/registered generator paradigm=inference
+    builds. Every other objective is a no-op here."""
+    if get_training_objective(architecture_name) == "adversarial":
+        from architectures.dcgan import attach_discriminator
+
+        return attach_discriminator(model)
+    return model
 
 
 def get_trainable_module(model, architecture_name):

@@ -82,6 +82,21 @@ FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES = (
 )
 FL_DISTRIBUTED_FRAMEWORK = "PyTorch"
 
+# DCGAN (architecture=DCGAN, training_objective="adversarial") is
+# federated_learning-only, NOT distributed_training -- a real, narrower
+# constraint than the FedGraph carve-out below, not a copy of that
+# pattern for its own sake. core/training_objectives.py's
+# get_trainable_module()/set_trainable_module() only know how to wrap
+# ONE trainable submodule per model for distributed_frameworks/*.py's
+# DistributedDataParallel/deepspeed.initialize()/FairScale's OSS -- a
+# GAN genuinely needs its generator AND discriminator wrapped
+# separately for correct cross-process gradient sync, which that
+# single-target abstraction doesn't support. fl_frameworks/*.py never
+# wraps the model in anything at all (each round trains locally, no
+# process-group parallelism), so DCGAN works there with zero extra
+# machinery -- see architectures/dcgan.py's own registration comment.
+FL_ONLY_COMPATIBLE_ARCHITECTURES = ("DCGAN",)
+
 # fl_frameworks/fedgraph_adapter.py is a deliberate, narrow exception to the
 # constraint above: unlike every other FL/distributed adapter, it doesn't
 # call build_classification_dataset()/.state_dict() on a model this project's
@@ -208,11 +223,19 @@ class ExperimentConfig:
             # silently mislabeling ground truth exactly the way this
             # project's own FL/distributed generalization work (see
             # README.md) already fixed once for hardcoded CIFAR10.
-            architecture_allowlist = (
-                FEDGRAPH_COMPATIBLE_ARCHITECTURES
-                if self.fl_framework == "FedGraph"
-                else FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES
-            )
+            if self.fl_framework == "FedGraph":
+                architecture_allowlist = FEDGRAPH_COMPATIBLE_ARCHITECTURES
+            elif self.paradigm == "federated_learning":
+                # FL_ONLY_COMPATIBLE_ARCHITECTURES (DCGAN) only ever
+                # added here, not for paradigm=distributed_training --
+                # see that tuple's own comment for the real, structural
+                # reason (fl_frameworks/*.py never wraps the model in
+                # anything at all; distributed_frameworks/*.py's
+                # single-target wrap-and-replace helper can't handle a
+                # GAN's two separately-trained networks yet).
+                architecture_allowlist = FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES + FL_ONLY_COMPATIBLE_ARCHITECTURES
+            else:
+                architecture_allowlist = FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES
             if (self.architecture or "") not in architecture_allowlist:
                 errors.append(
                     f"paradigm '{self.paradigm}'"

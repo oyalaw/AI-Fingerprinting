@@ -73,7 +73,7 @@ them.
 from core.classification_metrics import compute_classification_metrics
 from core.registry import ARCHITECTURES, FL_FRAMEWORKS, FRAMEWORKS
 from core.training_data import build_training_dataset
-from core.training_objectives import get_training_step, is_classification
+from core.training_objectives import get_training_step, is_classification, prepare_model_for_training
 from fl_frameworks.base import FLFrameworkAdapter
 
 
@@ -255,6 +255,11 @@ class FedLabAdapter(FLFrameworkAdapter):
         from fedlab.core.server.manager import SynchronousServerManager
 
         model = _build_model(config)
+        # Adversarial training (architectures/dcgan.py's DCGAN) needs a
+        # discriminator attached before the handler ever reads
+        # model.parameters() -- a no-op for every other architecture.
+        # See core/training_objectives.py's prepare_model_for_training().
+        model = prepare_model_for_training(model, config.architecture)
         handler = _round_aware_handler_cls()(model, global_round=config.num_rounds, sample_ratio=1.0)
         handler.num_clients = config.num_clients
 
@@ -273,6 +278,7 @@ class FedLabAdapter(FLFrameworkAdapter):
         from fedlab.core.network import DistNetwork
 
         model = _build_model(config)
+        model = prepare_model_for_training(model, config.architecture)
         trainer = _event_logging_trainer_cls()(model)
         trainer.configure_logging(config, logger, event_log, config.client_index)
         trainer.setup_dataset(_ClientPartitionedDataset(config))

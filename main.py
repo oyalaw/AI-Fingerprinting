@@ -20,6 +20,7 @@ import sys
 from core.config import (
     FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES,
     FL_DISTRIBUTED_FRAMEWORK,
+    FL_ONLY_COMPATIBLE_ARCHITECTURES,
     VALID_PARADIGMS,
     VALID_ROLES,
     ExperimentConfig,
@@ -144,13 +145,16 @@ def cmd_interactive(_args):
             f"so Framework is locked to {FL_DISTRIBUTED_FRAMEWORK} and Architecture to the "
             "architectures below core/training_objectives.py has a real training loop for: "
             "classification (Image Classification, Sentiment Analysis, Activity Recognition), "
-            "reconstruction (Autoencoder/Image Reconstruction), or denoising (DDPM/Image "
-            "Generation) -- not e.g. Node Classification's transductive GCN, which fits none of "
-            "the three. Application/Dataset are real, not locked further -- core/training_data.py "
-            "loads whichever you pick via the same registries paradigm=inference uses. "
-            "core/config.py's validate() enforces the same constraints for hand-written "
-            "config.yaml files too, see FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES's comment "
-            "there for the full reasoning."
+            "reconstruction (Autoencoder/Image Reconstruction or AnomalyAutoencoder/Anomaly "
+            "Detection), or denoising (DDPM/Image Generation) -- not e.g. Node Classification's "
+            "transductive GCN, which fits none of those. DCGAN/adversarial training (GAN family) "
+            "is federated_learning-only, not distributed_training -- see "
+            "FL_ONLY_COMPATIBLE_ARCHITECTURES's own comment in core/config.py for the real, "
+            "structural reason. Application/Dataset are real, not locked further -- "
+            "core/training_data.py loads whichever you pick via the same registries "
+            "paradigm=inference uses. core/config.py's validate() enforces the same "
+            "constraints for hand-written config.yaml files too, see "
+            "FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES's comment there for the full reasoning."
         )
 
     device = _prompt_registry_choice("Device", DEVICES)
@@ -166,7 +170,13 @@ def cmd_interactive(_args):
 
     framework = _prompt_registry_choice("Framework", FRAMEWORKS, filter_fn=_framework_matches_device)
 
+    # FL_ONLY_COMPATIBLE_ARCHITECTURES (DCGAN) only added for
+    # paradigm=federated_learning, matching core/config.py's validate()
+    # exactly -- see FL_ONLY_COMPATIBLE_ARCHITECTURES's own comment there
+    # for why distributed_training doesn't get it too.
     fl_distributed_compatible_lower = {a.lower() for a in FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES}
+    if paradigm == "federated_learning":
+        fl_distributed_compatible_lower |= {a.lower() for a in FL_ONLY_COMPATIBLE_ARCHITECTURES}
 
     def _architecture_allowed_for_paradigm(entry):
         return not locks_fl_distributed or entry.name.lower() in fl_distributed_compatible_lower
