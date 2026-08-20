@@ -1,8 +1,10 @@
 import pathlib
+import platform
 import time
 
 from core.labels import build_ground_truth, new_experiment_id
 from core.logger import get_logger
+from core.registry import ARCHITECTURES
 from telemetry.experiment_log import ExperimentLog
 from telemetry.ground_truth import write_ground_truth
 from telemetry.manifest import build_manifest, write_manifest
@@ -12,6 +14,45 @@ from traffic.flow_features import export_flow_features
 from traffic.handcrafted_features import export_features
 from traffic.packet_features import ScapyCapture
 from traffic.sequence_export import export_sequence
+
+
+def _common_event_fields(config, experiment_id):
+    """Denormalized fields stamped onto every telemetry/experiment_log.py
+    record -- see that module's own docstring for why. A few of these
+    don't have a real source in this project yet and are honest, static
+    placeholders rather than fabricated precision:
+
+    - runtime: always "native" -- this project doesn't yet distinguish a
+      separate deployment runtime from the framework field itself.
+    - dataset_split: always "unspecified" -- datasets/*.py don't
+      currently expose which train/test/val split samples() draws from.
+    - precision: always "fp32" -- every architecture in this project
+      builds at default float32, no quantization path exists yet.
+    """
+    architecture_entry = ARCHITECTURES.get(config.architecture) if config.architecture else None
+    input_shape = architecture_entry.meta.get("input_shape") if architecture_entry else None
+    return {
+        "experiment_id": experiment_id,
+        "role": config.role,
+        "framework": config.framework,
+        "runtime": "native",
+        "family": config.family,
+        "architecture": config.architecture,
+        "application": config.application,
+        "dataset": config.dataset,
+        "dataset_split": "unspecified",
+        "device": config.device,
+        "operating_system": platform.platform(),
+        "execution_mode": "local_inference" if config.role == "standalone" else config.paradigm,
+        "precision": "fp32",
+        "batch_size": config.batch_size,
+        # A single int (e.g. 224) doesn't generalize across this
+        # project's own architecture zoo -- BERT's input_shape is (3, 32)
+        # tokens, SAM's is (3, 1024, 1024) pixels, GIN's is (1008,) a
+        # flattened graph encoding. Reporting the real declared shape
+        # instead of forcing a misleading single number.
+        "input_size": list(input_shape) if input_shape else None,
+    }
 
 
 class Experiment:
@@ -30,7 +71,14 @@ class Experiment:
         # silently reuse the first experiment's already-attached file
         # handler instead of logging to this one's own results_dir.
         self.logger = get_logger(f"experiment.{self.experiment_id}", self.results_dir)
-        self.event_log = ExperimentLog(self.results_dir / "events.jsonl")
+        # client/server get their own named event log (matching this
+        # project's other per-role artifacts, e.g. _resource.csv);
+        # standalone has no separate other side to distinguish itself
+        # from, so it keeps the plain events.jsonl name.
+        events_name = f"{self.config.role}_events.jsonl" if config.role in ("client", "server") else "events.jsonl"
+        self.events_path = self.results_dir / events_name
+        common_fields = _common_event_fields(config, self.experiment_id)
+        self.event_log = ExperimentLog(self.events_path, common_fields=common_fields)
 
     def run(self):
         timing = {"start": time.time()}
@@ -108,7 +156,7 @@ class Experiment:
             "features_csv": str(features_path) if features_path else None,
             "resource_csv": str(resource_path) if resource_monitor else None,
             "manifest": str(manifest_path),
-            "events_log": str(self.results_dir / "events.jsonl"),
+            "events_log": str(self.events_path),
         }
         ground_truth = build_ground_truth(self.config, self.experiment_id, timing, artifacts)
         write_ground_truth(self.results_dir / "ground_truth.json", ground_truth)

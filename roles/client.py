@@ -36,7 +36,9 @@ class ClientRole(Role):
         ).connect()
 
         timer = RequestTimer()
-        self.event_log.event("client_connected", host=self.config.host, port=self.config.port)
+        self.event_log.event(
+            "client_connected", host=self.config.host, port=self.config.port, peer=transport.peer_address
+        )
         self.logger.info(f"Connected to {self.config.host}:{self.config.port} via {self.config.transport}")
 
         try:
@@ -53,11 +55,15 @@ class ClientRole(Role):
                 output_tensor = framework.deserialize(response)
                 result = application.postprocess(output_tensor)
                 self.event_log.event(
-                    "inference_response",
+                    "inference_request",
                     request_id=request_id,
+                    sequence_index=i,
+                    request_bytes=len(payload),
+                    response_bytes=len(response),
+                    round_trip_ms=record["duration_s"] * 1000,
+                    output_shape=list(output_tensor.shape),
                     true_label=true_label,
                     predicted=result,
-                    duration_s=record["duration_s"],
                 )
                 self.logger.info(
                     f"[{request_id}] predicted={result} true={true_label} "

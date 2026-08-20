@@ -36,9 +36,11 @@ class TCPTransport(Transport):
         self.port = port
         self._sock = None
         self._server_sock = None
+        self._peer_address = None
 
     def connect(self):
         self._sock = socket.create_connection((self.host, self.port))
+        self._peer_address = self._sock.getpeername()
         return self
 
     def listen(self):
@@ -46,8 +48,15 @@ class TCPTransport(Transport):
         self._server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._server_sock.bind((self.host, self.port))
         self._server_sock.listen(1)
-        self._sock, _addr = self._server_sock.accept()
+        self._sock, addr = self._server_sock.accept()
+        self._peer_address = addr
         return self
+
+    @property
+    def peer_address(self):
+        if self._peer_address is None:
+            return None
+        return f"{self._peer_address[0]}:{self._peer_address[1]}"
 
     def send(self, data):
         send_framed(self._sock, data)
