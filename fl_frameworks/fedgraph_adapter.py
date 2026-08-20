@@ -75,6 +75,42 @@ config, same as every other FL adapter; `algorithm` is fixed to
 scope to expose all of here) and `local_epoch` to 1 (traffic generation,
 not training-quality tuning, the same policy every other adapter here
 follows).
+
+Per-round phase/metrics logging (fl_download_complete/fl_fit_start/
+fl_fit_end/fl_upload_ready/fl_evaluate_start/fl_evaluate_end, matching
+fl_frameworks/flower_adapter.py's/fedlab_adapter.py's event names) is
+added by _logging_trainer_gc_cls()/_logging_server_gc_cls() below --
+unlike those two adapters, run_GC() builds its own Trainer_GC/Server_GC
+instances internally with a fixed constructor signature, so there's no
+clean instance-injection point the way FedLab/Flower have. Instead,
+run_server() monkeypatches the module-level `fedgraph.federated_methods.
+Trainer_GC`/`.Server_GC` names right before calling run_GC() (both are
+late-bound globals `run_GC`'s own function body looks up at call time,
+confirmed directly reading its source) and restores them afterward.
+Every override still calls super() and never touches FedGraph's real
+training/aggregation logic -- narrower than it sounds, just a different
+injection mechanism than the other two adapters' clean subclass-and-pass-
+an-instance pattern.
+
+Two real, confirmed structural differences from Flower/FedLab/FedScale,
+not modeling choices made here: (1) run_GC_Fed_algorithm's own FedAvg
+loop only calls local_test() ONCE, after every communication round has
+already finished -- not per-round -- so fl_evaluate_start/end carry no
+round number. (2) neither update_params nor local_train ever receives a
+round number from the driver loop, so each Trainer_GC instance
+self-tracks its own round counter via an incrementing instance
+attribute, incremented in update_params (called once before round 1 and
+once after every round's aggregation) -- confirmed directly this
+produces one extra download event (round N+1) right before the final
+evaluate, which is real: the driver's own loop really does re-broadcast
+the aggregated model one last time after the last round completes,
+before ever calling local_test().
+
+Verified end-to-end with a real 2-trainer run: real per-round download/
+fit/upload events and real per-trainer training loss/accuracy for both
+simulated clients (real separate Ray actor processes), and real final
+evaluate loss/accuracy matching FedGraph's own printed test_acc values
+exactly (0.6/0.7).
 """
 import tempfile
 
@@ -82,11 +118,97 @@ from core.registry import FL_FRAMEWORKS
 from fl_frameworks.base import FLFrameworkAdapter
 
 
+def _logging_trainer_gc_cls(event_log):
+    """Trainer_GC (fedgraph/trainer_class.py) is a plain class with no
+    callback/event abstraction -- run_GC() (fedgraph/federated_methods.py)
+    builds it from a dynamically-defined Ray-actor subclass
+    (`class Trainer(Trainer_GC): ...`) *inside its own function body*,
+    referencing the module-level `Trainer_GC` name as a late-bound global
+    at call time -- confirmed directly reading its source. Monkeypatching
+    `fedgraph.federated_methods.Trainer_GC` right before calling run_GC()
+    (see run_server() below) makes run_GC()'s own subclass definition
+    pick this one up as ITS base class instead, with zero changes to
+    FedGraph's real training/aggregation logic -- every override here
+    calls super().
+
+    event_log is captured by closure, not smuggled through `args` the
+    way fl_frameworks/fedlab_adapter.py's round number had to be: Ray
+    actors serialize via cloudpickle, which (unlike stdlib pickle)
+    correctly handles closures over plain picklable data like
+    ExperimentLog (just a path + a dict, no open file handles) -- the
+    same reasoning distributed_frameworks/ray_train_adapter.py's own
+    docstring already establishes for its worker_event_log."""
+    from fedgraph.trainer_class import Trainer_GC
+
+    class LoggingTrainerGC(Trainer_GC):
+        def _fp_event(self, event_type, **fields):
+            event_log.event(event_type, client_index=self.id, **fields)
+
+        def update_params(self, server_params):
+            super().update_params(server_params)
+            # run_GC_Fed_algorithm calls update_params once before round 1
+            # (the initial broadcast) and once again after every round's
+            # aggregation -- self-tracked here since neither update_params
+            # nor local_train ever receives a round number from the
+            # driver loop (confirmed directly reading federated_methods.py).
+            self._fp_round = getattr(self, "_fp_round", 0) + 1
+            self._fp_event("fl_download_complete", round=self._fp_round)
+
+        def local_train(self, local_epoch, train_option="basic", mu=1):
+            round_number = getattr(self, "_fp_round", 0)
+            self._fp_event("fl_fit_start", round=round_number)
+            super().local_train(local_epoch, train_option=train_option, mu=mu)
+            training_losses = self.train_stats.get("trainingLosses") or []
+            training_accs = self.train_stats.get("trainingAccs") or []
+            self._fp_event(
+                "fl_fit_end",
+                round=round_number,
+                loss=training_losses[-1] if training_losses else None,
+                accuracy=training_accs[-1] if training_accs else None,
+            )
+            self._fp_event("fl_upload_ready", round=round_number)
+
+        def local_test(self, test_option="basic", mu=1):
+            # run_GC_Fed_algorithm only calls local_test ONCE, after every
+            # communication round has already finished (confirmed
+            # directly) -- unlike Flower/FedLab/FedScale's per-round
+            # evaluate, so this event carries no meaningful round number.
+            self._fp_event("fl_evaluate_start")
+            result = super().local_test(test_option=test_option, mu=mu)
+            test_loss, test_acc = result[0], result[1]
+            self._fp_event("fl_evaluate_end", loss=test_loss, accuracy=test_acc)
+            return result
+
+    return LoggingTrainerGC
+
+
+def _logging_server_gc_cls(event_log, logger):
+    """Server_GC (fedgraph/server_class.py) runs in the driver process,
+    not a Ray actor -- no serialization concerns, so this closes over
+    event_log/logger directly. Same monkeypatch mechanism as
+    _logging_trainer_gc_cls above: run_GC() references the module-level
+    `Server_GC` name as a late-bound global when constructing it."""
+    from fedgraph.server_class import Server_GC
+
+    class LoggingServerGC(Server_GC):
+        def aggregate_weights(self, selected_trainers):
+            round_number = getattr(self, "_fp_round", 0) + 1
+            self._fp_round = round_number
+            super().aggregate_weights(selected_trainers)
+            event_log.event(
+                "fl_round_aggregate_complete", round=round_number, participants=len(selected_trainers)
+            )
+            logger.info(f"FedGraph round {round_number}: aggregated {len(selected_trainers)} trainers")
+
+    return LoggingServerGC
+
+
 class FedGraphAdapter(FLFrameworkAdapter):
     def run_server(self, config, logger, event_log):
         import attridict
 
         from fedgraph.data_process import data_loader_GC_single
+        import fedgraph.federated_methods as fedgraph_federated_methods
         from fedgraph.federated_methods import run_GC
 
         num_trainers = max(config.num_clients, 1)
@@ -126,7 +248,31 @@ class FedGraphAdapter(FLFrameworkAdapter):
                 f"FedGraph run_GC starting: {num_trainers} simulated trainers (real Ray "
                 f"actor processes), {config.num_rounds} rounds, real MUTAG graph data"
             )
-            run_GC(args, data)
+
+            # Ray actors run in separate worker processes with a
+            # different cwd than this driver process -- same real,
+            # confirmed issue distributed_frameworks/ray_train_adapter.py's
+            # own docstring documents for the identical reason (a
+            # relative events.jsonl path resolves wrong inside a Ray
+            # worker) -- resolve to an absolute path before it crosses
+            # the process boundary.
+            from telemetry.experiment_log import ExperimentLog
+
+            trainer_event_log = ExperimentLog(event_log.path.resolve(), common_fields=event_log.common_fields)
+
+            original_trainer_gc = fedgraph_federated_methods.Trainer_GC
+            original_server_gc = fedgraph_federated_methods.Server_GC
+            fedgraph_federated_methods.Trainer_GC = _logging_trainer_gc_cls(trainer_event_log)
+            fedgraph_federated_methods.Server_GC = _logging_server_gc_cls(event_log, logger)
+            try:
+                run_GC(args, data)
+            finally:
+                # Restored unconditionally, even on failure -- these are
+                # module-global attributes on the real fedgraph package,
+                # not local to this call.
+                fedgraph_federated_methods.Trainer_GC = original_trainer_gc
+                fedgraph_federated_methods.Server_GC = original_server_gc
+
             event_log.event("fedgraph_complete", rounds=config.num_rounds)
             logger.info("FedGraph run_GC complete")
 

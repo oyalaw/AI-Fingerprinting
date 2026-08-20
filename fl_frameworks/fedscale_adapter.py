@@ -92,12 +92,141 @@ dispatched `client_train` events for both client 1 and client 2 to the
 same, single connected executor rank), not one OS process per client the
 way Flower/FedLab expect; `run_client` raises a clear error for any other
 `client_index` rather than silently doing nothing.
+
+Per-round phase/metrics logging (fl_download_complete/fl_fit_start/
+fl_fit_end/fl_upload_complete/fl_evaluate_start/fl_evaluate_end,
+matching fl_frameworks/flower_adapter.py's fl_frameworks/fedlab_adapter.py's
+event names) is added by _logging_aggregator_cls()/_logging_executor_cls()
+below, subclassing Aggregator/Executor the same narrow, additive way
+fedlab_adapter.py subclasses FedLab's own classes -- no callback/event
+abstraction exists in FedScale itself (confirmed directly reading its
+source), so every override calls super() and never touches the real
+aggregation/training logic.
+
+**One real, confirmed quirk, not a bug in this instrumentation**:
+aggregator-side and executor-side round numbers do NOT stay aligned the
+way they do for Flower/FedLab. The aggregator's own round_completion_handler
+increments self.round *after* a round finishes and logs using that
+post-increment value; the executor's own self.round only increments
+inside UpdateModel, which is called once per genuinely-new broadcasted
+model. Confirmed directly: round 1 (FedScale's own `self.round == 1`
+special case) always dispatches an eval-only round with no training: the
+very next client_train dispatch reuses that SAME already-downloaded
+model (no second UpdateModel call), so the executor logs that first real
+fit as round=1, while the aggregator's own round_completion_handler
+(triggered by that fit's completion) labels it round=2 in its own log.
+No real accuracy/precision -- only real accuracy/loss are logged (see
+_logging_aggregator_cls()'s aggregate_test_result override): FedScale's
+own fedscale/utils/model_test_module.py never computes precision/recall/F1
+for the image-classification path this adapter uses.
 """
 from fl_frameworks.base import FLFrameworkAdapter
 from core.registry import FL_FRAMEWORKS
 
 _REQUIRED_ARCHITECTURE = "ResNet18"
 _REQUIRED_DATASET = "CIFAR10"
+
+
+def _logging_aggregator_cls():
+    """Aggregator.round_completion_handler/aggregate_test_result are
+    plain, ordinary methods (no callback/event-dispatcher abstraction
+    exists in FedScale -- confirmed directly reading aggregator.py) --
+    subclassed the same narrow, additive way
+    fl_frameworks/fedlab_adapter.py subclasses SyncServerHandler: every
+    override calls super() first (or reads state before it, when that
+    state gets cleared inside super()) and never touches FedScale's real
+    aggregation logic."""
+    from fedscale.cloud.aggregation.aggregator import Aggregator
+
+    class LoggingAggregator(Aggregator):
+        def configure_logging(self, event_log, logger):
+            self._fp_event_log = event_log
+            self._fp_logger = logger
+
+        def round_completion_handler(self):
+            # self.loss_accumulator/self.stats_util_accumulator get reset
+            # to [] inside super().round_completion_handler() itself, so
+            # read them here, before calling it -- confirmed directly
+            # reading aggregator.py. Round completing next is self.round+1
+            # (the increment happens at the very top of the real method).
+            completed_round = self.round + 1
+            if self.loss_accumulator:
+                avg_loss = sum(self.loss_accumulator) / len(self.loss_accumulator)
+                self._fp_event_log.event(
+                    "fl_round_complete",
+                    round=completed_round,
+                    loss=avg_loss,
+                    participants=len(self.stats_util_accumulator),
+                )
+            super().round_completion_handler()
+
+        def aggregate_test_result(self):
+            super().aggregate_test_result()
+            # Only real test-accuracy metric FedScale itself computes for
+            # this task -- confirmed directly in fedscale/utils/
+            # model_test_module.py's test_pytorch_model(): precision/
+            # recall/F1 aren't computed anywhere for the image-
+            # classification path this adapter uses (there's even a
+            # commented-out precision_recall_fscore_support line, active
+            # only for FedScale's own unused "tag" task type) -- logged
+            # here as what's actually available, not padded with a
+            # fabricated precision_score/recall/f1_score to match
+            # fl_frameworks/flower_adapter.py's shape.
+            round_perf = self.testing_history["perf"].get(self.round, {})
+            self._fp_event_log.event(
+                "fl_evaluate_end",
+                round=self.round,
+                loss=round_perf.get("loss"),
+                accuracy=round_perf.get("top_1"),
+                top_5_accuracy=round_perf.get("top_5"),
+            )
+
+    return LoggingAggregator
+
+
+def _logging_executor_cls():
+    """Executor.UpdateModel/Train/training_handler/Test/testing_handler
+    are likewise plain methods with no callback abstraction -- same
+    subclassing approach as the aggregator above."""
+    from fedscale.cloud.execution.executor import Executor
+
+    class LoggingExecutor(Executor):
+        def configure_logging(self, event_log, logger):
+            self._fp_event_log = event_log
+            self._fp_logger = logger
+
+        def UpdateModel(self, model_weights):
+            # Real download boundary: the broadcasted global model for
+            # this round just arrived and gets loaded here -- self.round
+            # is incremented inside super() itself.
+            super().UpdateModel(model_weights)
+            self._fp_event_log.event("fl_download_complete", round=self.round)
+
+        def training_handler(self, client_id, conf, model):
+            self._fp_event_log.event("fl_fit_start", round=self.round, client_id=client_id)
+            result = super().training_handler(client_id, conf, model)
+            self._fp_event_log.event(
+                "fl_fit_end", round=self.round, client_id=client_id, loss=result.get("moving_loss")
+            )
+            return result
+
+        def Train(self, config):
+            # Unlike Flower (where the real gRPC send happens after our
+            # code returns, outside our visibility), FedScale's own
+            # CLIENT_EXECUTE_COMPLETION RPC inside super().Train() really
+            # does block until it completes before this method returns --
+            # "complete" is accurate here, not just "ready".
+            result = super().Train(config)
+            self._fp_event_log.event("fl_upload_complete", round=self.round)
+            return result
+
+        def testing_handler(self, model):
+            self._fp_event_log.event("fl_evaluate_start", round=self.round)
+            result = super().testing_handler(model)
+            self._fp_event_log.event("fl_evaluate_client_complete", round=self.round)
+            return result
+
+    return LoggingExecutor
 
 
 def _check_architecture_dataset(config):
@@ -146,7 +275,6 @@ def _build_args(config, this_rank):
 class FedScaleAdapter(FLFrameworkAdapter):
     def run_server(self, config, logger, event_log):
         _check_architecture_dataset(config)
-        from fedscale.cloud.aggregation.aggregator import Aggregator
 
         args = _build_args(config, this_rank=0)
 
@@ -157,7 +285,9 @@ class FedScaleAdapter(FLFrameworkAdapter):
             f"FedScale Aggregator starting: real gRPC server on {config.host}:{config.port}, "
             f"{config.num_rounds} rounds, real CIFAR10/ResNet18"
         )
-        Aggregator(args).run()
+        aggregator = _logging_aggregator_cls()(args)
+        aggregator.configure_logging(event_log, logger)
+        aggregator.run()
         event_log.event("fedscale_complete", rounds=config.num_rounds)
         logger.info("FedScale Aggregator complete")
 
@@ -170,8 +300,6 @@ class FedScaleAdapter(FLFrameworkAdapter):
                 "module's docstring for why (confirmed directly: the aggregator dispatches "
                 "client_train events for every simulated client to the same executor rank)."
             )
-        from fedscale.cloud.execution.executor import Executor
-
         args = _build_args(config, this_rank=1)
 
         event_log.event("fedscale_executor_start", num_clients=max(config.num_clients, 1))
@@ -179,7 +307,9 @@ class FedScaleAdapter(FLFrameworkAdapter):
             f"FedScale Executor starting: connecting to {config.host}:{config.port}, "
             f"simulating {max(config.num_clients, 1)} clients, real CIFAR10/ResNet18"
         )
-        Executor(args).run()
+        executor = _logging_executor_cls()(args)
+        executor.configure_logging(event_log, logger)
+        executor.run()
         event_log.event("fedscale_executor_complete")
         logger.info("FedScale Executor complete")
 
