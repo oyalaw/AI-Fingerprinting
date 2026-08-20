@@ -70,7 +70,7 @@ VALID_ROLES = ("client", "server", "standalone")
 FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES = (
     "ResNet18", "ResNet50", "MobileNetV2", "ViT",  # Image Classification
     "BERT", "DistilBERT",  # Sentiment Analysis
-    "LSTM", "GRU",  # Activity Recognition
+    "LSTM", "GRU", "MLP",  # Activity Recognition
 )
 FL_DISTRIBUTED_FRAMEWORK = "PyTorch"
 
