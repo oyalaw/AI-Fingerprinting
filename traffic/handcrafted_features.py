@@ -1,5 +1,7 @@
-"""Handcrafted statistical feature extraction over a pcap -- the
-literature-standard fixed-length feature-vector representation for
+"""Handcrafted statistical feature extraction over a pcap's already-parsed
+packet events (traffic/packet_reader.py's read_packets() output, shared
+with every other exporter rather than each one re-parsing the pcap) --
+the literature-standard fixed-length feature-vector representation for
 traffic-fingerprinting classifiers (as opposed to traffic/sequence_export.py's
 raw per-packet sequence, which a sequence-model classifier consumes
 directly instead).
@@ -33,19 +35,6 @@ import pathlib
 
 import numpy as np
 from scipy import stats as scipy_stats
-
-try:
-    from scapy.all import IP, TCP, UDP, rdpcap
-
-    SCAPY_AVAILABLE = True
-except ImportError:
-    SCAPY_AVAILABLE = False
-
-
-def _require_scapy():
-    if not SCAPY_AVAILABLE:
-        raise RuntimeError("scapy is not installed; cannot read pcap files.")
-
 
 _FULL_STATS = ("mean", "median", "std", "min", "max", "q25", "q75", "p90", "p95", "entropy", "skewness", "kurtosis")
 _BASIC_STATS = ("mean", "std", "min", "max")
@@ -90,67 +79,6 @@ def _describe(values, prefix, stats=_FULL_STATS):
         "kurtosis": float(scipy_stats.kurtosis(arr)) if len(arr) > 1 else 0.0,
     }
     return {f"{prefix}_{s}": available[s] for s in stats}
-
-
-def _read_packets(pcap_path, server_port):
-    """One dict per TCP/UDP packet: ts, direction, size, proto, tcp flags,
-    4-tuple (for connection counting/retransmission detection), and
-    tls_record_size when this packet's payload starts with a plausible
-    TLS record header."""
-    packets = rdpcap(str(pcap_path))
-    events = []
-    for pkt in packets:
-        if IP not in pkt:
-            continue
-        ip = pkt[IP]
-        if TCP in pkt:
-            tcp = pkt[TCP]
-            proto = "tcp"
-            direction = "up" if tcp.dport == server_port else "down"
-            sport, dport = tcp.sport, tcp.dport
-            flags = int(tcp.flags)
-            seq = int(tcp.seq)
-            payload = bytes(tcp.payload) if tcp.payload else b""
-        elif UDP in pkt:
-            udp = pkt[UDP]
-            proto = "udp"
-            direction = "up" if udp.dport == server_port else "down"
-            sport, dport = udp.sport, udp.dport
-            flags = 0
-            seq = None
-            payload = b""
-        else:
-            continue
-
-        tls_record_size = None
-        if len(payload) >= 5 and payload[0] in (20, 21, 22, 23) and payload[1] == 3:
-            declared_len = (payload[3] << 8) | payload[4]
-            if 0 < declared_len <= 16709:
-                tls_record_size = declared_len + 5
-
-        events.append(
-            {
-                "ts": float(pkt.time),
-                "direction": direction,
-                "size": len(pkt),
-                "proto": proto,
-                "flags": flags,
-                "seq": seq,
-                "conn_key": frozenset({(ip.src, sport), (ip.dst, dport)}),
-                # Retransmission means the same DATA was sent again, not
-                # just the same ACK number echoed again -- a pure ACK (no
-                # payload) legitimately repeats the previous seq whenever
-                # no new data is flowing, which is normal TCP behavior,
-                # not a retransmission. Confirmed directly: without this
-                # guard, a 32-packet capture with mostly bare ACKs reported
-                # 22 "retransmissions", which was this exact bug, not a
-                # real finding.
-                "retrans_key": (ip.src, sport, ip.dst, dport, seq) if (seq is not None and payload) else None,
-                "tls_record_size": tls_record_size,
-            }
-        )
-    events.sort(key=lambda e: e["ts"])
-    return events
 
 
 def _extract_window(events, gap_threshold_s):
@@ -253,14 +181,14 @@ FIELDNAMES = (
 )
 
 
-def extract_features(pcap_path, server_port, experiment_id, gap_threshold_s=0.5, window_seconds=None):
-    """Returns a list of row dicts: one row_type="overall" row covering
-    the whole capture, plus (if window_seconds is set) one row_type=
-    "window" row per fixed-width window, each computed independently
-    over just that window's own packets."""
-    _require_scapy()
-    events = _read_packets(pcap_path, server_port)
-
+def extract_features(events, experiment_id, gap_threshold_s=0.5, window_seconds=None):
+    """events is traffic/packet_reader.py's read_packets() output --
+    already parsed once and shared across every exporter core/
+    experiment.py calls, rather than each one re-parsing the same pcap.
+    Returns a list of row dicts: one row_type="overall" row covering the
+    whole capture, plus (if window_seconds is set) one row_type="window"
+    row per fixed-width window, each computed independently over just
+    that window's own packets."""
     rows = []
     overall = {"experiment_id": experiment_id, "row_type": "overall", "window_index": None,
                "window_start_sec": None, "window_end_sec": None}
@@ -290,14 +218,12 @@ def extract_features(pcap_path, server_port, experiment_id, gap_threshold_s=0.5,
     return rows
 
 
-def export_features(pcap_path, output_csv, server_port, experiment_id, gap_threshold_s=0.5, window_seconds=None):
+def export_features(events, output_csv, experiment_id, gap_threshold_s=0.5, window_seconds=None):
     """Computes extract_features() and writes it to output_csv -- mirrors
     traffic/sequence_export.py's export_sequence()/traffic/flow_features.py's
     export_flow_features()/traffic/burst_features.py's export_bursts()
     shape, called from core/experiment.py alongside those."""
-    rows = extract_features(
-        pcap_path, server_port, experiment_id, gap_threshold_s=gap_threshold_s, window_seconds=window_seconds
-    )
+    rows = extract_features(events, experiment_id, gap_threshold_s=gap_threshold_s, window_seconds=window_seconds)
 
     output_csv = pathlib.Path(output_csv)
     output_csv.parent.mkdir(parents=True, exist_ok=True)

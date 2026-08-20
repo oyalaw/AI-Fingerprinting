@@ -13,6 +13,7 @@ from traffic.burst_features import export_bursts
 from traffic.flow_features import export_flow_features
 from traffic.handcrafted_features import export_features
 from traffic.packet_features import ScapyCapture
+from traffic.packet_reader import read_packets
 from traffic.sequence_export import export_sequence
 
 
@@ -121,17 +122,25 @@ class Experiment:
         sequence_path = flow_features_path = bursts_path = features_path = None
         feature_row_count = None
         if capture and pcap_path.exists():
+            # Parsed once here and shared across all four exporters below,
+            # rather than each one independently calling scapy's rdpcap()
+            # on the same pcap -- see traffic/packet_reader.py's own
+            # docstring for the real, measured cost this avoids on a large
+            # capture (one real run during this project's own testing:
+            # 717MB, 577,123 packets).
+            events = read_packets(pcap_path, server_port=self.config.port)
+
             sequence_path = self.results_dir / f"{self.experiment_id}_sequence.csv"
-            export_sequence(pcap_path, sequence_path, server_port=self.config.port)
+            export_sequence(events, sequence_path)
 
             flow_features_path = self.results_dir / f"{self.experiment_id}_flow_features.json"
-            export_flow_features(pcap_path, flow_features_path, server_port=self.config.port)
+            export_flow_features(events, flow_features_path)
 
             bursts_path = self.results_dir / f"{self.experiment_id}_bursts.csv"
-            export_bursts(pcap_path, bursts_path)
+            export_bursts(events, bursts_path)
 
             features_path = self.results_dir / f"{self.experiment_id}_features.csv"
-            export_features(pcap_path, features_path, server_port=self.config.port, experiment_id=self.experiment_id)
+            export_features(events, features_path, experiment_id=self.experiment_id)
             with features_path.open(encoding="utf-8") as f:
                 feature_row_count = sum(1 for _ in f) - 1  # header doesn't count as a data row
 
