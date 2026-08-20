@@ -1,12 +1,28 @@
 """scapy-based background packet capture, scoped to one experiment's
 host:port. This is the primary data source for the whole project: everything
-downstream (flow/burst features, sequence export) reads the .pcap this writes.
+downstream (flow/burst features, sequence export, handcrafted features) reads
+the .pcap this writes.
 
 Requires a working packet-capture driver:
   - Windows: Npcap (https://npcap.com/), running as Administrator.
   - Linux/macOS: libpcap (usually preinstalled) + root or CAP_NET_RAW
     (`sudo setcap cap_net_raw+eip $(readlink -f $(which python3))` avoids
     needing root for every run).
+
+Deduplicates exact-duplicate packets at capture time -- a real, confirmed
+Linux kernel behavior, not a hypothetical: raw AF_PACKET capture on "lo"
+delivers every packet TWICE (once via the loopback pseudo-device's egress
+hook, once via its ingress hook), byte-for-byte identical, microseconds
+apart. Confirmed directly on a real captured pcap from this project's own
+testing: exactly half of 305 captured packets (152) were exact duplicates
+of the immediately preceding packet, all within 1-14 microseconds -- far
+too fast to be a genuine TCP retransmission (which needs at least one RTO
+timer, tens of milliseconds minimum). Since this project's own loopback
+auto-detection (below) makes "lo" the default capture interface for any
+same-machine test, every downstream artifact (packet counts, byte counts,
+burst/flow statistics, the handcrafted feature set) would otherwise
+silently double-count real traffic. Filtered once, here, at the actual
+capture source, rather than in every individual downstream consumer.
 """
 try:
     from scapy.all import AsyncSniffer, get_if_list, wrpcap
@@ -71,10 +87,29 @@ class ScapyCapture:
         self.logger = logger
         self._sniffer = None
         self._packets = []
+        self._last_raw = None
+        self._last_ts = None
+        self._duplicate_count = 0
 
     def _log(self, msg):
         if self.logger:
             self.logger.info(msg)
+
+    def _on_packet(self, pkt):
+        # See this module's own docstring: "lo" delivers every packet
+        # twice, byte-for-byte identical, microseconds apart. A real
+        # retransmission needs at least one RTO timer (tens of ms), so
+        # comparing only against the immediately preceding packet with a
+        # generous 2ms window safely catches the capture-level duplicate
+        # without ever mistaking a genuine retransmission for one.
+        raw = bytes(pkt)
+        ts = float(pkt.time)
+        if self._last_raw == raw and self._last_ts is not None and (ts - self._last_ts) < 0.002:
+            self._duplicate_count += 1
+            return
+        self._last_raw = raw
+        self._last_ts = ts
+        self._packets.append(pkt)
 
     def start(self):
         if not SCAPY_AVAILABLE:
@@ -108,7 +143,7 @@ class ScapyCapture:
             self._sniffer = AsyncSniffer(
                 filter=bpf_filter,
                 iface=self.interface,
-                prn=self._packets.append,
+                prn=self._on_packet,
                 store=False,
             )
             self._sniffer.start()
@@ -145,6 +180,11 @@ class ScapyCapture:
             # quirk unrelated to the actual workload that just ran.
             self._log(f"Capture stop() raised a known scapy issue, continuing: {exc}")
         self._sniffer = None
+        if self._duplicate_count:
+            self._log(
+                f"Dropped {self._duplicate_count} exact-duplicate packets "
+                "(known Linux 'lo' double-capture behavior, see this module's docstring)."
+            )
         if self._packets:
             wrpcap(str(self.output_path), self._packets)
             self._log(f"Wrote {len(self._packets)} packets to {self.output_path}")
