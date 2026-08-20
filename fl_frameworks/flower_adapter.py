@@ -21,6 +21,7 @@ torch/torchvision/flwr are imported lazily inside functions, not at module
 scope, so `python main.py --list` can enumerate this registration without
 any of them installed -- only actually running the FL slice needs them.
 """
+from core.classification_metrics import compute_classification_metrics
 from core.registry import ARCHITECTURES, FL_FRAMEWORKS, FRAMEWORKS
 from core.training_data import build_classification_dataset
 from fl_frameworks.base import FLFrameworkAdapter
@@ -70,12 +71,47 @@ class FlowerAdapter(FLFrameworkAdapter):
         def fit_config(server_round):
             event_log.event("fl_round_start", round=server_round)
             logger.info(f"Starting FL round {server_round}")
-            return {}
+            # Passed through Flower's own FitIns.config to each client's
+            # fit(parameters, ins_config) -- see run_client below -- so
+            # every per-client phase event this round can be tagged with
+            # the same round number the server logged, without the client
+            # needing to track it independently.
+            return {"server_round": server_round}
+
+        def evaluate_config(server_round):
+            # Same round-tagging as fit_config, for the separate evaluate()
+            # RPC Flower issues after each round's fit/aggregate step.
+            return {"server_round": server_round}
+
+        def aggregate_evaluate_metrics(results):
+            # results: list of (num_examples, metrics_dict) from every
+            # client's evaluate() return -- see run_client below. Weighted
+            # by num_examples so a client with a larger local partition
+            # counts proportionally more, standard FedAvg-style weighting.
+            total = sum(n for n, _ in results)
+            if total == 0:
+                return {}
+            aggregated = {}
+            for key in ("accuracy", "precision_score", "recall", "f1_score"):
+                aggregated[key] = sum(n * m.get(key, 0.0) for n, m in results) / total
+            event_log.event("fl_round_evaluate_aggregated", **aggregated)
+            return aggregated
 
         strategy = fl.server.strategy.FedAvg(
             min_available_clients=config.num_clients,
             min_fit_clients=config.num_clients,
+            # FedAvg's own default (2) ignores config.num_clients entirely
+            # -- confirmed directly: with a genuine single-client config,
+            # the server logged "configure_evaluate: no clients selected,
+            # skipping evaluation" every round, silently skipping the
+            # evaluate() phase (and this adapter's per-round metrics with
+            # it) rather than erroring. Matches min_fit_clients above so
+            # evaluate actually runs at whatever client count this
+            # experiment is configured for, not just >=2.
+            min_evaluate_clients=config.num_clients,
             on_fit_config_fn=fit_config,
+            on_evaluate_config_fn=evaluate_config,
+            evaluate_metrics_aggregation_fn=aggregate_evaluate_metrics,
             initial_parameters=fl.common.ndarrays_to_parameters(_get_parameters(model)),
         )
         fl.server.start_server(
@@ -93,16 +129,32 @@ class FlowerAdapter(FLFrameworkAdapter):
         client_index = config.client_index
         loader = _partition_loader(config, client_index)
 
+        # Anchors round 1's download-phase window in telemetry/
+        # round_phase_features.py's post-hoc phase-window builder --
+        # otherwise there's no baseline timestamp to measure the very
+        # first download against. FedLab's own adapter logs the same
+        # event for the same reason.
+        event_log.event("fl_client_start", client_index=client_index)
+
         class TorchFlowerClient(fl.client.NumPyClient):
             def get_parameters(self, ins_config):
                 return _get_parameters(model)
 
             def fit(self, parameters, ins_config):
+                server_round = ins_config.get("server_round")
                 _set_parameters(model, parameters)
+                # Global weights just arrived over Flower's own gRPC
+                # transport and were loaded above -- this is the closest
+                # this adapter code can observe of the real download,
+                # since Flower's ClientApp deserializes the wire message
+                # before ever calling fit().
+                event_log.event("fl_download_complete", client_index=client_index, round=server_round, phase="fit")
                 model.train()
+                event_log.event("fl_fit_start", client_index=client_index, round=server_round)
                 optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
                 loss_fn = torch.nn.CrossEntropyLoss()
                 total = 0
+                total_loss = 0.0
                 # frameworks/pytorch_adapter.py auto-places the model on
                 # cuda when available, but this loader's tensors are plain
                 # CPU tensors -- confirmed directly, a real "Expected all
@@ -118,14 +170,59 @@ class FlowerAdapter(FLFrameworkAdapter):
                     loss.backward()
                     optimizer.step()
                     total += len(labels)
+                    total_loss += loss.item() * len(labels)
+                avg_loss = total_loss / total if total else 0.0
+                event_log.event(
+                    "fl_fit_end", client_index=client_index, round=server_round, examples=total, loss=avg_loss
+                )
                 event_log.event("fl_client_fit", client_index=client_index, examples=total)
                 logger.info(f"Client {client_index} trained on {total} examples")
                 model.eval()
+                # Flower serializes and sends these returned parameters
+                # over gRPC immediately after this call returns -- that
+                # send happens inside Flower's own ClientApp, outside this
+                # adapter's visibility, so "ready" rather than "complete"
+                # is what this event actually marks.
+                event_log.event("fl_upload_ready", client_index=client_index, round=server_round)
                 return _get_parameters(model), max(total, 1), {}
 
             def evaluate(self, parameters, ins_config):
+                server_round = ins_config.get("server_round")
                 _set_parameters(model, parameters)
-                return 0.0, max(len(loader.dataset), 1), {}
+                event_log.event(
+                    "fl_download_complete", client_index=client_index, round=server_round, phase="evaluate"
+                )
+                model.eval()
+                event_log.event("fl_evaluate_start", client_index=client_index, round=server_round)
+                loss_fn = torch.nn.CrossEntropyLoss()
+                device = next(model.parameters()).device
+                total_loss = 0.0
+                all_predictions = []
+                all_labels = []
+                with torch.no_grad():
+                    for images, labels in loader:
+                        images, labels = images.to(device), labels.to(device)
+                        output = model(images)
+                        total_loss += loss_fn(output, labels).item() * len(labels)
+                        all_predictions.append(output.argmax(dim=1).cpu())
+                        all_labels.append(labels.cpu())
+                predictions = torch.cat(all_predictions) if all_predictions else torch.empty(0, dtype=torch.long)
+                true_labels = torch.cat(all_labels) if all_labels else torch.empty(0, dtype=torch.long)
+                num_examples = len(true_labels)
+                avg_loss = (total_loss / num_examples) if num_examples else 0.0
+                # Evaluated on this client's own local partition -- the
+                # same one fit() just trained on, not a separate held-out
+                # split (none exists in this pipeline) -- consistent with
+                # this project's "traffic over accuracy" priority
+                # documented elsewhere (e.g.
+                # fl_frameworks/fedscale_adapter.py): these numbers track
+                # convergence trend across rounds, not generalization.
+                num_classes = ARCHITECTURES.get(config.architecture).meta.get("num_classes")
+                metrics = compute_classification_metrics(predictions, true_labels, num_classes)
+                event_log.event(
+                    "fl_evaluate_end", client_index=client_index, round=server_round, loss=avg_loss, **metrics
+                )
+                return avg_loss, max(num_examples, 1), metrics
 
         client_instance = TorchFlowerClient()
         server_address = f"{config.host}:{config.port}"

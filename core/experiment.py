@@ -1,3 +1,4 @@
+import csv
 import pathlib
 import platform
 import time
@@ -9,6 +10,7 @@ from telemetry.experiment_log import ExperimentLog
 from telemetry.ground_truth import write_ground_truth
 from telemetry.manifest import build_manifest, write_manifest
 from telemetry.resource_monitor import ResourceMonitor
+from telemetry.round_phase_features import export_round_phase_features, load_phase_events
 from traffic.burst_features import export_bursts
 from traffic.flow_features import export_flow_features
 from traffic.handcrafted_features import export_features
@@ -145,6 +147,25 @@ class Experiment:
             with features_path.open(encoding="utf-8") as f:
                 feature_row_count = sum(1 for _ in f) - 1  # header doesn't count as a data row
 
+        # Only ever produces rows for an FL client role whose adapter
+        # actually logged round/phase events -- see telemetry/
+        # round_phase_features.py's own docstring. No file gets written
+        # at all for plain inference/distributed_training/standalone
+        # runs, or for a server role, rather than emitting an empty or
+        # all-null CSV that would misleadingly look like a real artifact.
+        round_features_path = None
+        if self.config.role == "client" and capture and pcap_path.exists():
+            phase_events = load_phase_events(self.events_path)
+            if any(e.get("round") is not None for e in phase_events):
+                resource_rows = []
+                if resource_monitor and resource_path.exists():
+                    with resource_path.open(encoding="utf-8") as f:
+                        resource_rows = list(csv.DictReader(f))
+                round_features_path = self.results_dir / f"{self.experiment_id}_round_features.csv"
+                export_round_phase_features(
+                    self.experiment_id, phase_events, events, resource_rows, round_features_path
+                )
+
         manifest_path = self.results_dir / f"{self.experiment_id}_manifest.json"
         manifest = build_manifest(
             self.experiment_id,
@@ -165,6 +186,7 @@ class Experiment:
             "bursts_csv": str(bursts_path) if bursts_path else None,
             "features_csv": str(features_path) if features_path else None,
             "resource_csv": str(resource_path) if resource_monitor else None,
+            "round_features_csv": str(round_features_path) if round_features_path else None,
             "manifest": str(manifest_path),
             "events_log": str(self.events_path),
         }

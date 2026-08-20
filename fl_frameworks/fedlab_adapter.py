@@ -68,6 +68,7 @@ module scope, so `python main.py --list` can enumerate this registration
 without any of them installed -- only actually running the FL slice needs
 them.
 """
+from core.classification_metrics import compute_classification_metrics
 from core.registry import ARCHITECTURES, FL_FRAMEWORKS, FRAMEWORKS
 from core.training_data import build_classification_dataset
 from fl_frameworks.base import FLFrameworkAdapter
@@ -105,14 +106,138 @@ class _ClientPartitionedDataset:
         return DataLoader(subset, batch_size=max(batch_size, 2), drop_last=True)
 
 
+def _round_aware_handler_cls():
+    """SyncServerHandler.downlink_package only ever sends [model_parameters]
+    -- confirmed directly by reading fedlab/contrib/algorithm/basic_server.py
+    -- so a client's local_process()/train() has no way to know which round
+    it's training, unlike Flower's on_fit_config_fn which hands the client
+    the round number explicitly. FedLab's own AsyncServerHandler already
+    establishes the pattern this borrows: downlink_package =
+    [self.model_parameters, torch.Tensor([self.round])]. Subclassed rather
+    than monkeypatched so the rest of SyncServerHandler's real, verified
+    aggregation logic (see this module's own docstring) is untouched."""
+    import torch
+    from fedlab.contrib.algorithm.basic_server import SyncServerHandler
+
+    class RoundAwareServerHandler(SyncServerHandler):
+        @property
+        def downlink_package(self):
+            return [self.model_parameters, torch.Tensor([float(self.round)])]
+
+    return RoundAwareServerHandler
+
+
+def _event_logging_trainer_cls():
+    """SGDClientTrainer.train() is FedLab's own documented customization
+    point ("Overwrite this method to customize the PyTorch training
+    pipeline" -- fedlab/contrib/algorithm/basic_client.py's own
+    SGDSerialClientTrainer.train() docstring, same pattern here). Adds
+    the same phase-boundary event logging + real classification metrics
+    fl_frameworks/flower_adapter.py's NumPyClient.fit()/evaluate() do,
+    without touching FedLab's own SGD training loop."""
+    import torch
+    from fedlab.contrib.algorithm.basic_client import SGDClientTrainer
+
+    class EventLoggingClientTrainer(SGDClientTrainer):
+        def configure_logging(self, config, logger, event_log, client_index):
+            self._fp_config = config
+            self._fp_logger = logger
+            self._fp_event_log = event_log
+            self._fp_client_index = client_index
+
+        def local_process(self, payload, id):
+            model_parameters = payload[0]
+            # FedLab's own round counter is 0-indexed (increments only
+            # after a round's aggregation completes); +1 here so
+            # round=1 means "the first round" the same way Flower's own
+            # server_round does, for a consistent join key across
+            # fl_framework values downstream.
+            fedlab_round = int(payload[1].item()) if len(payload) > 1 else None
+            round_number = (fedlab_round + 1) if fedlab_round is not None else None
+            train_loader = self.dataset.get_dataloader(id, self.batch_size)
+            self.train(model_parameters, train_loader, round_number=round_number)
+
+        def train(self, model_parameters, train_loader, round_number=None) -> None:
+            from fedlab.utils import SerializationTool
+
+            event_log = self._fp_event_log
+            client_index = self._fp_client_index
+
+            SerializationTool.deserialize_model(self._model, model_parameters)
+            # Global weights just arrived over FedLab's own torch.distributed
+            # gloo transport and were loaded above -- the closest this
+            # adapter code can observe of the real download.
+            event_log.event(
+                "fl_download_complete", client_index=client_index, round=round_number, phase="fit"
+            )
+            event_log.event("fl_fit_start", client_index=client_index, round=round_number)
+            self._model.train()
+            total = 0
+            total_loss = 0.0
+            for _ in range(self.epochs):
+                for data, target in train_loader:
+                    if self.cuda:
+                        data, target = data.cuda(self.device), target.cuda(self.device)
+                    outputs = self._model(data)
+                    loss = self.criterion(outputs, target)
+                    self.optimizer.zero_grad()
+                    loss.backward()
+                    self.optimizer.step()
+                    total += len(target)
+                    total_loss += loss.item() * len(target)
+            avg_loss = total_loss / total if total else 0.0
+            event_log.event(
+                "fl_fit_end", client_index=client_index, round=round_number, examples=total, loss=avg_loss
+            )
+
+            # FedLab's basic FedAvg pattern (unlike Flower's FedAvg
+            # strategy) has no separate server-driven evaluate RPC at
+            # all -- confirmed directly, SyncServerHandler/
+            # PassiveClientManager only ever exchange ParameterUpdate
+            # messages. Evaluating immediately here, on the same local
+            # partition training just used (no held-out split exists in
+            # this pipeline), is the closest equivalent -- same "traffic
+            # over accuracy" simplification fl_frameworks/flower_adapter.py
+            # documents for its own evaluate().
+            event_log.event("fl_evaluate_start", client_index=client_index, round=round_number)
+            self._model.eval()
+            all_predictions, all_labels = [], []
+            eval_loss_total = 0.0
+            with torch.no_grad():
+                for data, target in train_loader:
+                    if self.cuda:
+                        data, target = data.cuda(self.device), target.cuda(self.device)
+                    output = self._model(data)
+                    eval_loss_total += self.criterion(output, target).item() * len(target)
+                    all_predictions.append(output.argmax(dim=1).cpu())
+                    all_labels.append(target.cpu())
+            predictions = torch.cat(all_predictions) if all_predictions else torch.empty(0, dtype=torch.long)
+            labels_tensor = torch.cat(all_labels) if all_labels else torch.empty(0, dtype=torch.long)
+            eval_examples = len(labels_tensor)
+            eval_avg_loss = (eval_loss_total / eval_examples) if eval_examples else 0.0
+            num_classes = ARCHITECTURES.get(self._fp_config.architecture).meta.get("num_classes")
+            metrics = compute_classification_metrics(predictions, labels_tensor, num_classes)
+            event_log.event(
+                "fl_evaluate_end", client_index=client_index, round=round_number, loss=eval_avg_loss, **metrics
+            )
+            self._model.train()
+
+            event_log.event("fl_upload_ready", client_index=client_index, round=round_number)
+            self._fp_logger.info(
+                f"Client {client_index} round {round_number}: trained on {total} examples, "
+                f"accuracy={metrics['accuracy']:.4f}"
+            )
+
+    return EventLoggingClientTrainer
+
+
 class FedLabAdapter(FLFrameworkAdapter):
     def run_server(self, config, logger, event_log):
-        from fedlab.contrib.algorithm.basic_server import SyncServerHandler
         from fedlab.core.network import DistNetwork
         from fedlab.core.server.manager import SynchronousServerManager
 
         model = _build_model(config)
-        handler = SyncServerHandler(model, global_round=config.num_rounds, sample_ratio=1.0)
+        handler = _round_aware_handler_cls()(model, global_round=config.num_rounds, sample_ratio=1.0)
         handler.num_clients = config.num_clients
 
         network = DistNetwork(
@@ -126,12 +251,12 @@ class FedLabAdapter(FLFrameworkAdapter):
         event_log.event("fl_server_complete", rounds=config.num_rounds)
 
     def run_client(self, config, logger, event_log):
-        from fedlab.contrib.algorithm.basic_client import SGDClientTrainer
         from fedlab.core.client.manager import PassiveClientManager
         from fedlab.core.network import DistNetwork
 
         model = _build_model(config)
-        trainer = SGDClientTrainer(model)
+        trainer = _event_logging_trainer_cls()(model)
+        trainer.configure_logging(config, logger, event_log, config.client_index)
         trainer.setup_dataset(_ClientPartitionedDataset(config))
         trainer.setup_optim(epochs=1, batch_size=config.batch_size, lr=0.01)
 
