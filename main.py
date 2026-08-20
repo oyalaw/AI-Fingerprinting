@@ -139,13 +139,15 @@ def cmd_interactive(_args):
     locks_fl_distributed = paradigm in ("federated_learning", "distributed_training")
     if locks_fl_distributed:
         print(
-            f"\nNote: every {paradigm} adapter's training loop needs a classification-shaped "
-            f"architecture (CrossEntropyLoss over class logits), so Framework is locked to "
-            f"{FL_DISTRIBUTED_FRAMEWORK} and Architecture to the classification architectures "
-            "below (Image Classification, Sentiment Analysis, or Activity Recognition -- not "
-            "e.g. Node Classification's transductive GCN or any generative application). "
-            "Application/Dataset are real, not locked further -- core/training_data.py loads "
-            "whichever you pick via the same registries paradigm=inference uses. "
+            f"\nNote: every {paradigm} adapter calls .state_dict()/.parameters()/.train() "
+            f"directly on the loaded model, which only a plain PyTorch nn.Module supports -- "
+            f"so Framework is locked to {FL_DISTRIBUTED_FRAMEWORK} and Architecture to the "
+            "architectures below core/training_objectives.py has a real training loop for: "
+            "classification (Image Classification, Sentiment Analysis, Activity Recognition), "
+            "reconstruction (Autoencoder/Image Reconstruction), or denoising (DDPM/Image "
+            "Generation) -- not e.g. Node Classification's transductive GCN, which fits none of "
+            "the three. Application/Dataset are real, not locked further -- core/training_data.py "
+            "loads whichever you pick via the same registries paradigm=inference uses. "
             "core/config.py's validate() enforces the same constraints for hand-written "
             "config.yaml files too, see FL_DISTRIBUTED_COMPATIBLE_ARCHITECTURES's comment "
             "there for the full reasoning."
