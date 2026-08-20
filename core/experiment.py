@@ -5,6 +5,7 @@ from core.labels import build_ground_truth, new_experiment_id
 from core.logger import get_logger
 from telemetry.experiment_log import ExperimentLog
 from telemetry.ground_truth import write_ground_truth
+from telemetry.resource_monitor import ResourceMonitor
 from traffic.burst_features import export_bursts
 from traffic.flow_features import export_flow_features
 from traffic.packet_features import ScapyCapture
@@ -44,12 +45,26 @@ class Experiment:
             )
             capture.start()
 
+        resource_path = self.results_dir / f"{self.experiment_id}_{self.config.role}_resource.csv"
+        resource_monitor = None
+        if self.config.resource_telemetry:
+            resource_monitor = ResourceMonitor(
+                experiment_id=self.experiment_id,
+                role=self.config.role,
+                device=self.config.device,
+                output_csv=resource_path,
+                sample_interval_ms=self.config.resource_sample_interval_ms,
+            )
+            resource_monitor.start()
+
         try:
             role = self._build_role()
             role.run()
         finally:
             if capture:
                 capture.stop()
+            if resource_monitor:
+                resource_monitor.stop()
 
         timing["end"] = time.time()
 
@@ -69,6 +84,7 @@ class Experiment:
             "sequence_csv": str(sequence_path) if sequence_path else None,
             "flow_features": str(flow_features_path) if flow_features_path else None,
             "bursts_csv": str(bursts_path) if bursts_path else None,
+            "resource_csv": str(resource_path) if resource_monitor else None,
             "events_log": str(self.results_dir / "events.jsonl"),
         }
         ground_truth = build_ground_truth(self.config, self.experiment_id, timing, artifacts)

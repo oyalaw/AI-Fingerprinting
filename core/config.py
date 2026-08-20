@@ -108,6 +108,13 @@ class ExperimentConfig:
     capture: bool = True
     capture_interface: typing.Optional[str] = None
 
+    # Separate from capture -- see telemetry/resource_monitor.py's own
+    # docstring for why host-side CPU/GPU/power/energy telemetry is kept
+    # as its own artifact rather than folded into the attacker-facing
+    # traffic features.
+    resource_telemetry: bool = True
+    resource_sample_interval_ms: int = 500
+
     tls_cert: typing.Optional[str] = None
     tls_key: typing.Optional[str] = None
 
