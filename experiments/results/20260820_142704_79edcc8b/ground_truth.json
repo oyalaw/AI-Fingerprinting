@@ -1,0 +1,41 @@
+{
+  "experiment_id": "20260820_142704_79edcc8b",
+  "timestamp_start": 1787250424.2079842,
+  "timestamp_end": 1787251512.6460617,
+  "paradigm": "federated_learning",
+  "role": "server",
+  "labels": {
+    "level1_framework": "PyTorch",
+    "level2_family": "CNN",
+    "level3_architecture": "ResNet18",
+    "level4_application": "Image Classification",
+    "level5_device": "ubuntu"
+  },
+  "sub_frameworks": {
+    "fl_framework": "Flower",
+    "distributed_framework": null,
+    "llm_framework": null,
+    "cv_framework": null,
+    "speech_framework": null,
+    "graph_framework": null,
+    "diffusion_framework": null
+  },
+  "dataset": "CIFAR10",
+  "transport": "gRPC",
+  "network": {
+    "host": "10.42.0.47",
+    "port": 8080
+  },
+  "num_requests": 50,
+  "batch_size": 1,
+  "artifacts": {
+    "pcap": "experiments/results/20260820_142704_79edcc8b/20260820_142704_79edcc8b.pcap",
+    "sequence_csv": "experiments/results/20260820_142704_79edcc8b/20260820_142704_79edcc8b_sequence.csv",
+    "flow_features": "experiments/results/20260820_142704_79edcc8b/20260820_142704_79edcc8b_flow_features.json",
+    "bursts_csv": "experiments/results/20260820_142704_79edcc8b/20260820_142704_79edcc8b_bursts.csv",
+    "features_csv": "experiments/results/20260820_142704_79edcc8b/20260820_142704_79edcc8b_features.csv",
+    "resource_csv": "experiments/results/20260820_142704_79edcc8b/20260820_142704_79edcc8b_server_resource.csv",
+    "manifest": "experiments/results/20260820_142704_79edcc8b/20260820_142704_79edcc8b_manifest.json",
+    "events_log": "experiments/results/20260820_142704_79edcc8b/server_events.jsonl"
+  }
+}

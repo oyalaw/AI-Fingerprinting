@@ -14,10 +14,21 @@ data/
 *.pt
 *.pth
 
-# Per-experiment output: pcaps, sequences, ground truth, logs, dev TLS certs
-experiments/results/*/
+# Per-experiment output: only the large raw-data files stay untracked --
+# pcaps run hundreds of MB to multi-GB, and sequence.csv (one row per
+# packet) scales the same way, both well past GitHub's 100MB/file limit
+# without Git LFS. Everything else per experiment (ground_truth.json,
+# manifest.json, features.csv, bursts.csv, flow_features.json, resource
+# telemetry CSVs, event-log JSONL) is small and stays tracked so results
+# can be versioned without the raw capture data.
+experiments/results/*/*.pcap
+experiments/results/*/*_sequence.csv
 experiments/results/.dev_certs/
 !experiments/results/.gitkeep
 
 *.egg-info/
 .pytest_cache/
+
+# LibreOffice/OpenOffice lock files, left behind when a CSV is opened in
+# Calc to eyeball it -- transient, not real data.
+.~lock.*#

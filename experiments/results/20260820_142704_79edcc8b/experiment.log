@@ -1,0 +1,7 @@
+2026-08-20 14:27:04,211 [INFO] experiment.20260820_142704_79edcc8b: Starting capture: filter='tcp port 8080' interface=default
+2026-08-20 14:27:04,221 [INFO] experiment.20260820_142704_79edcc8b: Resource telemetry collectors active: psutil
+2026-08-20 14:27:05,311 [INFO] experiment.20260820_142704_79edcc8b: Starting FL round 1
+2026-08-20 14:35:28,044 [INFO] experiment.20260820_142704_79edcc8b: Starting FL round 2
+2026-08-20 14:36:50,987 [INFO] experiment.20260820_142704_79edcc8b: Starting FL round 3
+2026-08-20 14:45:12,645 [INFO] experiment.20260820_142704_79edcc8b: Wrote 479631 packets to experiments/results/20260820_142704_79edcc8b/20260820_142704_79edcc8b.pcap
+2026-08-20 14:46:52,991 [INFO] experiment.20260820_142704_79edcc8b: Experiment 20260820_142704_79edcc8b complete. Results in experiments/results/20260820_142704_79edcc8b
