@@ -88,6 +88,13 @@ def _prompt_registry_choice(label, registry, filter_fn=None):
         print("Invalid choice, try again.")
 
 
+def _prompt_text(label, default, help_text=None):
+    if help_text:
+        print(f"\n{help_text}")
+    raw = input(f"{label} [{default}]: ").strip()
+    return raw or default
+
+
 def _prompt_optional_registry_choice(label, registry):
     """Same as _prompt_registry_choice, but with a leading "(none -- use the
     default)" option, for the five sub-framework fields (llm_framework etc.)
@@ -213,6 +220,31 @@ def cmd_interactive(_args):
     dataset = _prompt_registry_choice("Dataset", DATASETS, filter_fn=_dataset_matches_application)
     transport = _prompt_registry_choice("Transport", TRANSPORTS)
 
+    # Previously silently defaulted to 127.0.0.1 (this dataclass field's own
+    # default) with no prompt at all -- fine for a same-machine client/
+    # server test, but wrong for a real two-machine run: the client would
+    # try to connect to itself instead of the other machine, and capture
+    # would auto-select "lo" (see traffic/packet_features.py) instead of a
+    # real interface, both silently, with no error pointing at why. Ask
+    # directly instead of requiring a hand-written config.yaml for this.
+    host = _prompt_text(
+        "Server address",
+        "127.0.0.1",
+        help_text=(
+            "Same machine for both server and client? Press Enter for the default.\n"
+            "Testing across two real machines? Enter the SERVER machine's real LAN\n"
+            "IP here (run `hostname -I` on that machine to find it) -- and enter the\n"
+            "exact same address on both the server's AND the client's --interactive\n"
+            "run, since this is what the client connects to and what the server\n"
+            "binds to."
+        ),
+    )
+    port_raw = _prompt_text("Server port", "8765")
+    try:
+        port = int(port_raw)
+    except ValueError:
+        raise SystemExit(f"Invalid port: {port_raw!r} is not a number.")
+
     kwargs = dict(
         paradigm=paradigm,
         role=role,
@@ -223,6 +255,8 @@ def cmd_interactive(_args):
         application=application,
         dataset=dataset,
         transport=transport,
+        host=host,
+        port=port,
     )
 
     # Same gating conditions core/config.py's validate() uses to decide
