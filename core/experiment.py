@@ -105,6 +105,7 @@ class Experiment:
                 device=self.config.device,
                 output_csv=resource_path,
                 sample_interval_ms=self.config.resource_sample_interval_ms,
+                logger=self.logger,
             )
             resource_monitor.start()
 

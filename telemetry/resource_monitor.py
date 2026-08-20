@@ -247,18 +247,39 @@ class _JetsonTegrastatsCollector:
         self._proc.terminate()
 
 
-def _detect_collectors(sample_interval_ms):
+def _detect_collectors(sample_interval_ms, logger=None):
+    # psutil failing is a real setup problem, not expected hardware
+    # variation -- it's a hard dependency of this project (confirmed
+    # elsewhere: torch, scipy, etc. all assume it's present), so unlike
+    # the other three (where "this machine has no NVIDIA GPU"/"no RAPL
+    # access"/"not a Jetson" is the normal, silent case), a missing
+    # psutil gets a loud warning instead of vanishing into the same
+    # blanket except. Real bug found this way, not hypothetical: a
+    # conda env used for actual experiment runs never had psutil
+    # installed, so every resource_csv it produced silently had
+    # telemetry_source="none" and every single field blank on every
+    # row -- invisible unless someone thought to open the CSV and
+    # notice the empty columns.
     collectors = []
-    for build in (
-        lambda: _CPUMemoryNetworkCollector(),
-        lambda: _NvidiaGPUCollector(),
-        lambda: _RAPLCollector(),
-        lambda: _JetsonTegrastatsCollector(sample_interval_ms),
+    for name, build in (
+        ("psutil", lambda: _CPUMemoryNetworkCollector()),
+        ("nvml", lambda: _NvidiaGPUCollector()),
+        ("rapl", lambda: _RAPLCollector()),
+        ("tegrastats", lambda: _JetsonTegrastatsCollector(sample_interval_ms)),
     ):
         try:
             collectors.append(build())
-        except Exception:
-            continue  # that source genuinely isn't available on this machine
+        except Exception as exc:
+            if name == "psutil" and logger:
+                logger.warning(
+                    f"Resource telemetry: psutil collector failed to initialize ({exc!r}) -- "
+                    "this is this project's baseline collector and should always work; "
+                    "resource_csv will be missing CPU/memory/network data. "
+                    "Run `pip install psutil` in whichever environment is actually running this."
+                )
+            continue  # the other three genuinely just aren't available on every machine
+    if not collectors and logger:
+        logger.warning("Resource telemetry: no collectors available at all -- resource_csv rows will be empty.")
     return collectors
 
 
@@ -269,14 +290,17 @@ class ResourceMonitor:
     lifecycle -- construct, start() before the workload runs, stop() in
     a finally block afterward (see core/experiment.py)."""
 
-    def __init__(self, experiment_id, role, device, output_csv, sample_interval_ms=500):
+    def __init__(self, experiment_id, role, device, output_csv, sample_interval_ms=500, logger=None):
         self.experiment_id = experiment_id
         self.role = role
         self.device = device
         self.output_csv = pathlib.Path(output_csv)
         self.sample_interval_ms = sample_interval_ms
-        self._collectors = _detect_collectors(sample_interval_ms)
+        self.logger = logger
+        self._collectors = _detect_collectors(sample_interval_ms, logger=logger)
         self._sources = "+".join(c.name for c in self._collectors) or "none"
+        if logger:
+            logger.info(f"Resource telemetry collectors active: {self._sources}")
         self._thread = None
         self._stop_event = threading.Event()
         self._energy_totals = {"gpu_energy_j": 0.0, "system_energy_j": 0.0}
