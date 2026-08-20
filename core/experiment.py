@@ -20,7 +20,13 @@ class Experiment:
         self.experiment_id = new_experiment_id()
         self.results_dir = pathlib.Path(config.results_dir) / self.experiment_id
         self.results_dir.mkdir(parents=True, exist_ok=True)
-        self.logger = get_logger(f"experiment.{self.experiment_id[:8]}", self.results_dir)
+        # Uses the full experiment_id, not a truncated slice -- get_logger()
+        # keys off this name via logging.getLogger()'s process-wide
+        # singleton, so a truncated prefix that collides (e.g. two
+        # same-day experiments sharing just a date-only prefix) would
+        # silently reuse the first experiment's already-attached file
+        # handler instead of logging to this one's own results_dir.
+        self.logger = get_logger(f"experiment.{self.experiment_id}", self.results_dir)
         self.event_log = ExperimentLog(self.results_dir / "events.jsonl")
 
     def run(self):

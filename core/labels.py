@@ -7,11 +7,18 @@ pipeline exists to produce labeled encrypted-traffic traces for.
     Level 4  Application     e.g. Image Classification
     Level 5  Device          e.g. Jetson AGX Orin, iPhone
 """
+import datetime
 import uuid
 
 
 def new_experiment_id():
-    return uuid.uuid4().hex
+    # A pure timestamp risks two experiments started in the same second
+    # colliding and silently overwriting each other's results_dir -- keeping
+    # a short uuid suffix guarantees uniqueness while still sorting/reading
+    # chronologically, since this value names both the results folder and
+    # every artifact filename inside it (see core/experiment.py).
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"{timestamp}_{uuid.uuid4().hex[:8]}"
 
 
 def build_ground_truth(config, experiment_id, timing, artifacts):
