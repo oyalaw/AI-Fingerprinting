@@ -12,12 +12,13 @@ window_seconds is set -- both written to the same CSV, distinguished by
 row_type/window_index/window_start_sec/window_end_sec, so a downstream
 reader can pick either granularity from one file.
 
-72 features total, not 92: the original spec this module was built from
-named 92 as the feature count but only actually listed 72 distinct
-field names. Implemented here is exactly the 72 that were named -- see
-this project's own conversation history for the count discrepancy this
-was flagged against. Add more explicitly if a specific missing set is
-identified, rather than padding the count with invented features.
+75 features total: the original spec this module was built from named
+92 as the feature count but only actually listed 72 distinct field
+names, which is what this module first implemented -- see this
+project's own conversation history for that count discrepancy. The
+oversized_packet_* fields (count/byte_count/rate) were added afterward,
+independent of that spec, to surface TSO/GRO capture artifacts (see
+traffic/packet_reader.py's STANDARD_ETHERNET_FRAME_BYTES docstring).
 
 TLS record detection is a documented, real approximation, not full TCP
 stream reassembly: each TCP segment's payload is checked for a
@@ -141,6 +142,14 @@ def _extract_window(events, gap_threshold_s):
     tls_sizes = [e["tls_record_size"] for e in events if e["tls_record_size"] is not None]
     connections = {e["conn_key"] for e in tcp_events}
 
+    # traffic/packet_reader.py's is_oversized flags a likely TSO/GRO capture
+    # artifact (a captured "packet" bigger than a real wire frame ever is --
+    # see that module's own STANDARD_ETHERNET_FRAME_BYTES docstring). Counted
+    # here, not silently excluded from the stats above: a downstream reader
+    # comparing captures from different NICs/OSes needs to know how much of
+    # e.g. packet_size_max came from this artifact rather than real traffic.
+    oversized_events = [e for e in events if e.get("is_oversized")]
+
     row = {
         "packet_count_total": packet_count,
         "direction_switch_count": direction_switches,
@@ -162,6 +171,9 @@ def _extract_window(events, gap_threshold_s):
         "tcp_retransmission_count": retransmissions,
         "tls_record_count": len(tls_sizes),
         "connection_count": len(connections),
+        "oversized_packet_count": len(oversized_events),
+        "oversized_byte_count": sum(e["size"] for e in oversized_events),
+        "oversized_packet_rate": (len(oversized_events) / packet_count) if packet_count else 0.0,
     }
     row.update(_describe(sizes, "packet_size", _FULL_STATS))
     row.update(_describe(up_sizes, "upload_packet_size", _BASIC_STATS))

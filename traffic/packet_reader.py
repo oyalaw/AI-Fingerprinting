@@ -26,15 +26,37 @@ def _require_scapy():
         raise RuntimeError("scapy is not installed; cannot read pcap files.")
 
 
-def read_packets(pcap_path, server_port):
+# Standard non-jumbo Ethernet frame: 14-byte header + 1500-byte MTU payload.
+# Every healthy capture in this project's own testing topped out exactly
+# at this size -- a real capture on a machine with TSO/GRO NIC offload
+# active showed a "packet" of 63,778 bytes instead, confirmed as a real,
+# known Linux capture artifact, not a bug in this project's own code: TSO
+# (TCP Segmentation Offload) hands the NIC one large send buffer and lets
+# the *hardware* split it into wire-sized frames, and GRO (Generic Receive
+# Offload) does the reverse on receive -- both happen at a point in the
+# stack a raw AF_PACKET capture sits on the wrong side of, so it sees one
+# oversized "packet" that was never actually one frame on the wire. A
+# genuine passive network observer (this project's whole threat model)
+# would never see that -- only the true, MTU-sized frames. Flagged here
+# rather than silently filtered or re-split: reconstructing the real
+# per-frame boundaries would require assuming the actual negotiated MSS,
+# itself a guess, so a downstream reader gets to decide how to handle it
+# rather than have this project quietly reshape the data on an assumption.
+STANDARD_ETHERNET_FRAME_BYTES = 1514
+
+
+def read_packets(pcap_path, server_port, oversized_threshold=STANDARD_ETHERNET_FRAME_BYTES):
     """One dict per TCP/UDP packet (every other IP payload type, and any
     non-IP packet, is dropped -- consistent with what every consumer of
     this data already only ever looked at): ts, direction, size, proto,
     TCP flags, seq, a connection key (for connection counting), a
     retransmission key (only set for segments that actually carry a
     payload -- see traffic/handcrafted_features.py's own docstring for
-    why bare ACKs must not count), and tls_record_size when this packet's
-    payload starts with a plausible TLS record header."""
+    why bare ACKs must not count), tls_record_size when this packet's
+    payload starts with a plausible TLS record header, and is_oversized
+    when size exceeds oversized_threshold (see this module's own
+    STANDARD_ETHERNET_FRAME_BYTES docstring -- a likely TSO/GRO capture
+    artifact, not a real on-wire frame)."""
     _require_scapy()
     packets = rdpcap(str(pcap_path))
     events = []
@@ -78,6 +100,7 @@ def read_packets(pcap_path, server_port):
                 "conn_key": frozenset({(ip.src, sport), (ip.dst, dport)}),
                 "retrans_key": (ip.src, sport, ip.dst, dport, seq) if (seq is not None and payload) else None,
                 "tls_record_size": tls_record_size,
+                "is_oversized": len(pkt) > oversized_threshold,
             }
         )
     events.sort(key=lambda e: e["ts"])

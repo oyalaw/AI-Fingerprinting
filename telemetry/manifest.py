@@ -18,6 +18,7 @@ import platform
 import socket
 
 from traffic.handcrafted_features import FIELDNAMES as HANDCRAFTED_FIELDNAMES
+from traffic.packet_reader import STANDARD_ETHERNET_FRAME_BYTES
 from traffic.sequence_export import FIELDNAMES as SEQUENCE_FIELDNAMES
 
 
@@ -51,6 +52,7 @@ def build_manifest(
     feature_row_count=None,
     burst_gap_sec=0.5,
     window_seconds=None,
+    oversized_threshold_bytes=STANDARD_ETHERNET_FRAME_BYTES,
 ):
     """capture is the ScapyCapture instance itself (or None if capture was
     disabled) -- reads its public capture_start_epoch/capture_end_epoch/
@@ -90,6 +92,12 @@ def build_manifest(
             # separate knob exists.
             "idle_threshold_sec": burst_gap_sec,
             "window_seconds": window_seconds,
+            # Above this size (bytes), traffic/packet_reader.py flags a
+            # captured "packet" as is_oversized -- a likely TSO/GRO capture
+            # artifact rather than a real on-wire frame. Recorded here so a
+            # downstream reader knows exactly what threshold produced the
+            # oversized_packet_* columns in handcrafted_features.
+            "oversized_packet_threshold_bytes": oversized_threshold_bytes,
         },
         "outputs": {
             "packet_sequence_csv": str(sequence_csv) if sequence_csv else None,
