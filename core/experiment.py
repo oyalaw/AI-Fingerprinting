@@ -8,6 +8,7 @@ from telemetry.ground_truth import write_ground_truth
 from telemetry.resource_monitor import ResourceMonitor
 from traffic.burst_features import export_bursts
 from traffic.flow_features import export_flow_features
+from traffic.handcrafted_features import export_features
 from traffic.packet_features import ScapyCapture
 from traffic.sequence_export import export_sequence
 
@@ -68,7 +69,7 @@ class Experiment:
 
         timing["end"] = time.time()
 
-        sequence_path = flow_features_path = bursts_path = None
+        sequence_path = flow_features_path = bursts_path = features_path = None
         if capture and pcap_path.exists():
             sequence_path = self.results_dir / f"{self.experiment_id}_sequence.csv"
             export_sequence(pcap_path, sequence_path, server_port=self.config.port)
@@ -79,11 +80,15 @@ class Experiment:
             bursts_path = self.results_dir / f"{self.experiment_id}_bursts.csv"
             export_bursts(pcap_path, bursts_path)
 
+            features_path = self.results_dir / f"{self.experiment_id}_features.csv"
+            export_features(pcap_path, features_path, server_port=self.config.port, experiment_id=self.experiment_id)
+
         artifacts = {
             "pcap": str(pcap_path) if capture else None,
             "sequence_csv": str(sequence_path) if sequence_path else None,
             "flow_features": str(flow_features_path) if flow_features_path else None,
             "bursts_csv": str(bursts_path) if bursts_path else None,
+            "features_csv": str(features_path) if features_path else None,
             "resource_csv": str(resource_path) if resource_monitor else None,
             "events_log": str(self.results_dir / "events.jsonl"),
         }
