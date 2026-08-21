@@ -54,6 +54,19 @@ _SERVICE_NAME = "FingerprintingTransport"
 _METHOD_NAME = "Exchange"
 _FULL_METHOD = f"/{_SERVICE_NAME}/{_METHOD_NAME}"
 
+# gRPC's Python API defaults both send/receive message size to 4MB
+# (4,194,304 bytes) unless a channel/server explicitly raises it -- real,
+# confirmed failure: a YOLOv8 request (real (640, 640, 3) float32 image
+# tensor, 4,915,200 bytes serialized) tripped this exact ceiling cross-
+# machine (`RESOURCE_EXHAUSTED: Received message larger than max
+# (4915214 vs. 4194304)`), and SAM's own (3, 1024, 1024) input is 12.6MB,
+# well past it too. -1 removes the cap entirely rather than picking
+# another fixed number a future/larger payload could still hit.
+_CHANNEL_OPTIONS = [
+    ("grpc.max_send_message_length", -1),
+    ("grpc.max_receive_message_length", -1),
+]
+
 
 def _identity(data):
     return data
@@ -73,7 +86,7 @@ class GRPCTransport(Transport):
     def connect(self):
         import grpc
 
-        self._channel = grpc.insecure_channel(f"{self.host}:{self.port}")
+        self._channel = grpc.insecure_channel(f"{self.host}:{self.port}", options=_CHANNEL_OPTIONS)
         self._call = self._channel.unary_unary(
             _FULL_METHOD, request_serializer=_identity, response_deserializer=_identity
         )
@@ -100,7 +113,7 @@ class GRPCTransport(Transport):
 
         from concurrent.futures import ThreadPoolExecutor
 
-        self._server = grpc.server(ThreadPoolExecutor(max_workers=4))
+        self._server = grpc.server(ThreadPoolExecutor(max_workers=4), options=_CHANNEL_OPTIONS)
         self._server.add_generic_rpc_handlers((generic_handler,))
         self._server.add_insecure_port(f"{self.host}:{self.port}")
         self._server.start()
