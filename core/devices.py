@@ -13,7 +13,11 @@ extra "jetson" tag: their `platform_family` is "linux" (they run the same
 Python stack as Ubuntu), but several frameworks (TensorRT, DeepStream,
 Edge Impulse) register `platforms=["jetson"]` specifically rather than the
 broader "linux", since they need Jetson's CUDA/TensorRT stack, not just
-any Linux box.
+any Linux box. `dgx` is x86_64 (unlike the Jetsons' ARM64 SoC) and no
+framework here registers a dgx-specific `platforms=[...]` entry, so it
+gets plain `("linux",)` like `ubuntu` -- real CUDA/TensorRT support on a
+DGX comes from the same frameworks/tensorrt_adapter.py etc. any x86_64
+Linux box with an NVIDIA GPU can already use, not a distinct platform tag.
 """
 from core.registry import DEVICES
 
@@ -21,6 +25,7 @@ from core.registry import DEVICES
 _DEVICES = [
     ("windows", "windows", ("windows",), False, True, "npcap", "Requires Npcap + Administrator for capture."),
     ("ubuntu", "linux", ("linux",), False, True, "libpcap", "Requires libpcap + root/CAP_NET_RAW for capture."),
+    ("dgx", "linux", ("linux",), False, True, "libpcap", "x86_64, multi-GPU (real CUDA/TensorRT, NVLink). Requires libpcap + root/CAP_NET_RAW for capture, same as ubuntu."),
     ("raspberry_pi_5", "linux", ("linux",), False, True, "libpcap", "ARM64, CPU-only accelerator."),
     ("jetson_agx_orin", "linux", ("linux", "jetson"), False, True, "libpcap", "ARM64, CUDA + TensorRT capable."),
     ("jetson_orin_nano", "linux", ("linux", "jetson"), False, True, "libpcap", "ARM64, CUDA + TensorRT capable."),
