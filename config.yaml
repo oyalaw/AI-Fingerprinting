@@ -9,7 +9,8 @@
 
 paradigm: inference          # inference | federated_learning | distributed_training
 role: server                 # client | server | standalone (overridden by --role)
-device: windows              # see `python main.py --list` under "device" for all options
+device: pc                   # see `python main.py --list` under "device" for all options
+operating_system: Windows    # see `python main.py --list` under "operating_system" for all options
 
 framework: PyTorch
 family: CNN

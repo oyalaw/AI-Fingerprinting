@@ -1,6 +1,7 @@
 paradigm: federated_learning
 role: server
-device: ubuntu
+device: pc
+operating_system: Ubuntu
 framework: PyTorch
 family: CNN
 architecture: ResNet18

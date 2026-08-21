@@ -1,11 +1,18 @@
-"""Ground-truth label schema: the 5-level fingerprinting taxonomy this whole
+"""Ground-truth label schema: the 6-level fingerprinting taxonomy this whole
 pipeline exists to produce labeled encrypted-traffic traces for.
 
     Level 1  Framework       e.g. PyTorch, TensorRT, Flower
     Level 2  Family          e.g. CNN, Transformer
     Level 3  Architecture    e.g. ResNet18, BERT
     Level 4  Application     e.g. Image Classification
-    Level 5  Device          e.g. Jetson AGX Orin, iPhone
+    Level 5  Device          e.g. Jetson AGX Orin, iPhone (core/devices.py)
+    Level 6  OS              e.g. JetPack, Windows (core/operating_systems.py)
+
+Device and OS are deliberately separate axes (Level 5 and Level 6), not one
+combined "device" -- see core/devices.py's own docstring for why: a single
+device (a DGX) can plausibly run more than one OS, so folding them into one
+field (as this project originally did, treating "ubuntu"/"windows" as if
+they were devices themselves) breaks down.
 """
 import datetime
 import uuid
@@ -34,6 +41,7 @@ def build_ground_truth(config, experiment_id, timing, artifacts):
             "level3_architecture": config.architecture,
             "level4_application": config.application,
             "level5_device": config.device,
+            "level6_os": config.operating_system,
         },
         "sub_frameworks": {
             "fl_framework": config.fl_framework,

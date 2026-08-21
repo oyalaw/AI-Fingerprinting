@@ -105,6 +105,7 @@ class Experiment:
                 experiment_id=self.experiment_id,
                 role=self.config.role,
                 device=self.config.device,
+                operating_system=self.config.operating_system,
                 output_csv=resource_path,
                 sample_interval_ms=self.config.resource_sample_interval_ms,
                 logger=self.logger,

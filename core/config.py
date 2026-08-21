@@ -17,6 +17,7 @@ from core.registry import (
     FRAMEWORKS,
     GRAPH_FRAMEWORKS,
     LLM_FRAMEWORKS,
+    OPERATING_SYSTEMS,
     SPEECH_FRAMEWORKS,
     TRANSPORTS,
     discover_all,
@@ -116,6 +117,7 @@ class ExperimentConfig:
     paradigm: str
     role: str
     device: str
+    operating_system: str
     framework: str
     family: str
     architecture: str
@@ -182,6 +184,7 @@ class ExperimentConfig:
             errors.append(f"role must be one of {VALID_ROLES}, got '{self.role}'")
 
         check(DEVICES, self.device, "device")
+        check(OPERATING_SYSTEMS, self.operating_system, "operating_system")
         check(FRAMEWORKS, self.framework, "framework")
         check(FAMILIES, self.family, "family")
         check(ARCHITECTURES, self.architecture, "architecture")

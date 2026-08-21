@@ -42,6 +42,7 @@ FIELDNAMES = [
     "sample_index",
     "role",
     "device",
+    "operating_system",
     "sample_interval_ms",
     "telemetry_source",
     "bytes_sent_total",
@@ -290,10 +291,13 @@ class ResourceMonitor:
     lifecycle -- construct, start() before the workload runs, stop() in
     a finally block afterward (see core/experiment.py)."""
 
-    def __init__(self, experiment_id, role, device, output_csv, sample_interval_ms=500, logger=None):
+    def __init__(
+        self, experiment_id, role, device, operating_system, output_csv, sample_interval_ms=500, logger=None
+    ):
         self.experiment_id = experiment_id
         self.role = role
         self.device = device
+        self.operating_system = operating_system
         self.output_csv = pathlib.Path(output_csv)
         self.sample_interval_ms = sample_interval_ms
         self.logger = logger
@@ -331,6 +335,7 @@ class ResourceMonitor:
                 "sample_index": sample_index,
                 "role": self.role,
                 "device": self.device,
+                "operating_system": self.operating_system,
                 "sample_interval_ms": self.sample_interval_ms,
                 "telemetry_source": self._sources,
             }

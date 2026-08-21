@@ -2,7 +2,7 @@
 """AI Fingerprinting Research Testbed.
 
 One codebase, driven by config or an interactive prompt, that walks:
-  Paradigm -> Role -> Device -> Framework -> Family -> Architecture ->
+  Paradigm -> Role -> Device -> OS -> Framework -> Family -> Architecture ->
   Application -> Dataset -> Transport
 executes the real workload, captures the resulting network traffic, and
 auto-saves ground truth labels for downstream traffic-fingerprinting
@@ -41,6 +41,7 @@ from core.registry import (
     FRAMEWORKS,
     GRAPH_FRAMEWORKS,
     LLM_FRAMEWORKS,
+    OPERATING_SYSTEMS,
     SPEECH_FRAMEWORKS,
     TRANSPORTS,
     discover_all,
@@ -131,7 +132,7 @@ def cmd_interactive(_args):
     print("Every option below is real and selectable; [stub] means it's registered")
     print("but not yet implemented -- picking one will fail validation at the end.")
     print("Each step's choices are narrowed to what's actually compatible with what")
-    print("you already picked (device -> framework -> family -> architecture ->")
+    print("you already picked (device -> os -> framework -> family -> architecture ->")
     print("application -> dataset).\n")
 
     paradigm = _prompt_from_options("Paradigm", list(VALID_PARADIGMS))
@@ -158,7 +159,25 @@ def cmd_interactive(_args):
         )
 
     device = _prompt_registry_choice("Device", DEVICES)
-    device_tags = {t.lower() for t in DEVICES.get(device).meta.get("platform_tags") or ()}
+
+    # Narrowed to what this device can actually run -- core/devices.py's
+    # own compatible_os metadata (e.g. iphone -> only iOS; pc -> Windows
+    # or Ubuntu).
+    def _os_compatible_with_device(entry):
+        compatible = DEVICES.get(device).meta.get("compatible_os")
+        return not compatible or entry.name in compatible
+
+    operating_system = _prompt_registry_choice("OS", OPERATING_SYSTEMS, filter_fn=_os_compatible_with_device)
+
+    # Framework compatibility is the union of the device's own (hardware-
+    # only, e.g. Jetson's "jetson" CUDA/TensorRT tag) and the OS's own
+    # (e.g. "linux"/"windows"/"macos") platform_tags -- see
+    # core/devices.py's and core/operating_systems.py's own docstrings for
+    # why this split exists instead of one combined tag set.
+    platform_tags = (
+        {t.lower() for t in DEVICES.get(device).meta.get("platform_tags") or ()}
+        | {t.lower() for t in OPERATING_SYSTEMS.get(operating_system).meta.get("platform_tags") or ()}
+    )
 
     def _framework_matches_device(entry):
         if locks_fl_distributed:
@@ -166,7 +185,7 @@ def cmd_interactive(_args):
         platforms = entry.meta.get("platforms")
         if not platforms:
             return True  # no platform restriction declared -- assume compatible
-        return bool(device_tags & {p.lower() for p in platforms})
+        return bool(platform_tags & {p.lower() for p in platforms})
 
     framework = _prompt_registry_choice("Framework", FRAMEWORKS, filter_fn=_framework_matches_device)
 
@@ -261,6 +280,7 @@ def cmd_interactive(_args):
         paradigm=paradigm,
         role=role,
         device=device,
+        operating_system=operating_system,
         framework=framework,
         family=family,
         architecture=architecture,

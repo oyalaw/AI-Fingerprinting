@@ -2,7 +2,8 @@
 # LAN IP, not 127.0.0.1). Client machines connect to that IP.
 paradigm: inference
 role: server
-device: ubuntu
+device: pc
+operating_system: Ubuntu
 
 framework: PyTorch
 family: CNN
@@ -11,7 +12,7 @@ application: Image Classification
 dataset: CIFAR10
 transport: TCP
 
-host: 10.250.37.118          # this machine's real LAN IP -- update if it changes (DHCP)
+host: 10.42.0.47             # this machine's real LAN IP -- update if it changes (DHCP)
 port: 8765
 num_requests: 20
 batch_size: 1

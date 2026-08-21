@@ -87,6 +87,7 @@ APPLICATIONS = Registry("application")
 DATASETS = Registry("dataset")
 TRANSPORTS = Registry("transport")
 DEVICES = Registry("device")
+OPERATING_SYSTEMS = Registry("operating_system")
 
 ALL_REGISTRIES = {
     "framework": FRAMEWORKS,
@@ -103,6 +104,7 @@ ALL_REGISTRIES = {
     "dataset": DATASETS,
     "transport": TRANSPORTS,
     "device": DEVICES,
+    "operating_system": OPERATING_SYSTEMS,
 }
 
 _DISCOVERABLE_PACKAGES = (
@@ -141,6 +143,7 @@ def discover_all():
     if _discovered:
         return
     import core.devices  # noqa: F401 - registers DEVICES entries
+    import core.operating_systems  # noqa: F401 - registers OPERATING_SYSTEMS entries
     for package_name in _DISCOVERABLE_PACKAGES:
         discover(package_name)
     _discovered = True

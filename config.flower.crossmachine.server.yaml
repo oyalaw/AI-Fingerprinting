@@ -1,6 +1,7 @@
 paradigm: federated_learning
 role: server
-device: ubuntu
+device: pc
+operating_system: Ubuntu
 framework: PyTorch
 family: CNN
 architecture: ResNet18
@@ -19,6 +20,6 @@ results_dir: experiments/results
 fl_framework: Flower
 distributed_framework: null
 num_clients: 1
-num_rounds: 10
+num_rounds: 20
 client_index: 0
 worker_rank: 1

@@ -2,13 +2,16 @@
 
 One codebase that generates real, labeled AI-workload network traffic for
 encrypted-traffic fingerprinting research. It walks Paradigm -> Role ->
-Device -> Framework -> Family -> Architecture -> Application -> Dataset ->
-Transport (via config file or an interactive prompt), executes the real
-workload, captures the resulting traffic with scapy, and auto-saves ground
-truth labels for a 5-level classification taxonomy (Framework / Family /
-Architecture / Application / Device).
+Device -> OS -> Framework -> Family -> Architecture -> Application ->
+Dataset -> Transport (via config file or an interactive prompt), executes
+the real workload, captures the resulting traffic with scapy, and
+auto-saves ground truth labels for a 6-level classification taxonomy
+(Framework / Family / Architecture / Application / Device / OS). Device and
+OS are deliberately separate axes (`core/devices.py`/`core/operating_systems.py`)
+rather than one combined field -- a single device (e.g. a DGX) can
+plausibly run more than one OS, so folding them together breaks down.
 
-Every option from the project's framework/architecture/dataset/device
+Every option from the project's framework/architecture/dataset/device/os
 tables is registered and visible via `--list`, even before it has a real
 implementation behind it -- unimplemented entries are clearly marked
 `[stub]` and raise a clear error if you try to run them. Currently
@@ -80,8 +83,9 @@ Every stub in every registry -- not just the ones with an interesting story
 above -- has now been individually investigated and, for the ones that
 stayed stubs, has a docstring documenting a specific, confirmed root cause
 rather than a placeholder. `family` (6/6), `architecture` (18/18),
-`application` (11/11), `dataset` (9/9), `device` (11/11), `transport`
-(4/4), and `framework` (23/23) are fully real. The remaining registries
+`application` (11/11), `dataset` (9/9), `device` (11/11),
+`operating_system` (7/7), `transport` (4/4), and `framework` (23/23) are
+fully real. The remaining registries
 (`fl_framework` 5/16, `distributed_framework` 4/10, `llm_framework` 3/10,
 `cv_framework` 3/8, `speech_framework` 3/6, `graph_framework` 1/4,
 `diffusion_framework` 1/4) still have stubs, but every one of them was
@@ -348,17 +352,24 @@ python main.py --interactive   # guided step-by-step setup (Paradigm -> ... -> T
 ```
 
 `--interactive` narrows each step's choices to what's actually compatible
-with what you already picked, all the way down the chain (Device ->
+with what you already picked, all the way down the chain (Device -> OS ->
 Framework -> Family -> Architecture -> Application -> Dataset):
 
-- **Device -> Framework**: only frameworks whose `platforms=[...]`
-  registration metadata overlaps the device's platform tags are offered
-  (e.g. picking `iphone` only offers CoreML/ExecuTorch/MediaPipe/MNN/NCNN/
-  ONNX Runtime Mobile/PyTorch Mobile/TensorFlow Lite -- not PyTorch/
-  TensorFlow/OpenVINO, which don't run natively on iOS). Jetson boards
-  carry an extra `jetson` platform tag beyond their `linux` one (see
-  `core/devices.py`), so TensorRT/DeepStream/Edge Impulse only show up for
-  Jetson devices, not Ubuntu.
+- **Device -> OS**: only operating systems in the device's own
+  `compatible_os` metadata are offered (e.g. picking `iphone` only offers
+  `iOS`; picking `pc` offers both `Windows` and `Ubuntu`).
+- **Device + OS -> Framework**: only frameworks whose `platforms=[...]`
+  registration metadata overlaps the *union* of the device's and the OS's
+  own platform tags are offered (e.g. picking `iphone` + `iOS` only offers
+  CoreML/ExecuTorch/MediaPipe/MNN/NCNN/ONNX Runtime Mobile/PyTorch Mobile/
+  TensorFlow Lite -- not PyTorch/TensorFlow/OpenVINO, which don't run
+  natively on iOS). Device and OS deliberately carry different kinds of
+  tags: the three Jetson boards carry a hardware-only `jetson` tag (real
+  CUDA/TensorRT silicon -- see `core/devices.py`), while their OS,
+  `JetPack`, carries the `linux` tag like any other Linux box (see
+  `core/operating_systems.py`) -- so TensorRT/DeepStream/Edge Impulse only
+  show up for Jetson devices specifically, while anything gated on plain
+  `linux` still shows up for Jetson, `pc`+Ubuntu, or `dgx` alike.
 - **Framework -> Family**: only families with at least one architecture
   compatible with the chosen framework are offered (e.g. picking
   `TensorRT` only offers `CNN`, since only ResNet18/MobileNetV2 declare
@@ -468,7 +479,7 @@ each.
 ## Output
 
 Each run writes to `experiments/results/<experiment_id>/`:
-`ground_truth.json` (the 5-level label + full config snapshot),
+`ground_truth.json` (the 6-level label + full config snapshot),
 `<id>.pcap` (raw capture), `<id>_sequence.csv` (ordered
 timestamp/direction/size sequence -- the standard feature representation
 for traffic-fingerprinting classifiers), `<id>_flow_features.json`

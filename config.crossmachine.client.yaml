@@ -2,7 +2,8 @@
 # LAN IP, not 127.0.0.1). Client machines connect to that IP.
 paradigm: inference
 role: client
-device: ubuntu
+device: pc
+operating_system: Ubuntu
 
 framework: PyTorch
 family: CNN
